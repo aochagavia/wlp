@@ -196,7 +196,7 @@ replaceVar q (n, expr) = r q
           r (Operated op left right) = Operated op (r left) (r right)
           r (Negation e) = Negation (r e)
           r (Index name e) = Index name (r e)
-          r (Forall v e) = Forall v (r e) -- TODO: don't replace bound variables?
+          r f@(Forall v@(Variable name _) e) = if name == n then f else Forall v (r e)
 
 -- |Calculate the wlp of a program based on the given postcondition
 wlp :: Program -> Expression -> Expression
