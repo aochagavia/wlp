@@ -187,5 +187,26 @@ bool = Primitive BoolType
 ints = Array IntType
 bools = Array BoolType
 
+-- |Replace all occurrences of a free variable by the given expression
+replaceVar :: Expression -> (Name, Expression) -> Expression
+replaceVar q (n, expr) = r q
+    where r :: Expression -> Expression
+          r (LiteralExpr l) = LiteralExpr l
+          r (NameExpr name) = if name == n then expr else NameExpr name
+          r (Operated op left right) = Operated op (r left) (r right)
+          r (Negation e) = Negation (r e)
+          r (Index name e) = Index name (r e)
+          r (Forall v e) = Forall v (r e) -- TODO: don't replace bound variables?
+
+-- |Calculate the wlp of a program based on the given postcondition
+wlp :: Program -> Expression -> Expression
+wlp (Program _ _ s) q = wlp' s q -- FIXME: is this enough?
+
+-- | Calculate the wlp of a statement based on the given postcondition
+wlp' :: Statement -> Expression -> Expression
+wlp' Skip q = q
+-- Assignment requires replacing all free variables in the postcondition
+wlp' (Assign targets exprs) q = foldr (flip replaceVar) q (zip targets exprs)
+
 someFunc :: IO ()
 someFunc = putStrLn "someFunc"
