@@ -200,13 +200,14 @@ replaceVar q (n, expr) = r q
 
 -- |Calculate the wlp of a program based on the given postcondition
 wlp :: Program -> Expression -> Expression
-wlp (Program _ _ s) q = wlp' s q -- FIXME: is this enough?
+wlp (Program _ _ s) q = wlp' s q -- TODO: recursion requires that we store this value somewhere
 
 -- | Calculate the wlp of a statement based on the given postcondition
 wlp' :: Statement -> Expression -> Expression
 wlp' Skip q = q
--- Assignment requires replacing all free variables in the postcondition
+-- Assignment requires simultaneously replacing all free variables in the postcondition
 wlp' (Assign targets exprs) q = foldr (flip replaceVar) q (zip targets exprs)
+
 
 someFunc :: IO ()
 someFunc = putStrLn "someFunc"

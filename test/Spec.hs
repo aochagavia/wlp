@@ -1,35 +1,31 @@
+{-# LANGUAGE TemplateHaskell #-}
+
 import Lib
 
-assertEq :: (Eq a, Show a, Show e) => a -> a -> e -> IO ()
-assertEq x y e
-    | x == y = putStrLn "Correct"
-    | otherwise = do
-        putStrLn $ "Error: " ++ (show e)
-        putStrLn $ "Left: " ++ (show x)
-        putStrLn $ "Right: " ++ (show y)
+import Test.QuickCheck
 
 -- |A program that does absolutely nothing
 void :: Program
 void = program [] [] []
 
-testVoid :: IO ()
-testVoid = do
-    let q = (ref "x") =>. (ref "y")
-    let p = wlp void q
-    assertEq p q "testVoid"
+prop_void :: Property
+prop_void = once $ p === q
+    where
+    q = ref "x" =>. ref "y"
+    p = wlp void q
 
--- |A program that always returns 42
-intConst :: Program
-intConst = program [] [("r", int)] [
-               assign ["r"] [i 42]
+-- |A program that always returns the given Int
+intConst :: Int -> Program
+intConst n = program [] [("r", int)] [
+               assign ["r"] [i n]
            ]
 
-testIntConst :: IO ()
-testIntConst = do
-    let q = (ref "r") ==. (i 42)
-    let expectedP = (i 42) ==. (i 42)
-    let p = wlp intConst q
-    assertEq p expectedP "testIntConst"
+prop_intCont :: Int -> Property
+prop_intCont n = p === expectedP
+    where
+    q = (ref "r") ==. (i n)
+    expectedP = (i n) ==. (i n)
+    p = wlp (intConst n) q
 
 -- |An identity program for integers
 intId :: Program
@@ -37,23 +33,34 @@ intId = program [("x", int)] [("r", int)] [
             assign ["r"] [ref "x"]
         ]
 
-testIntId :: IO ()
-testIntId = do
-    let q = (ref "r") ==. (ref "x")
-    let expectedP = (ref "x") ==. (ref "x")
-    let p = wlp intId q
-    assertEq p expectedP "testIntId"
+prop_intId :: Property
+prop_intId = once $ p === expectedP
+    where
+    q = (ref "r") ==. (ref "x")
+    expectedP = (ref "x") ==. (ref "x")
+    p = wlp intId q
 
 -- |A special test for bound variables
-testIntConstBound :: IO ()
-testIntConstBound = do
-    let q = forall "r" int (ref "r" >. i 100)
-    let p = wlp intId q
-    assertEq p q "testIntConstBound"
+prop_intIdBound :: Property
+prop_intIdBound = once $ p === q
+    where
+    q = forall "r" int (ref "r" >. i 100)
+    p = wlp intId q
 
-main :: IO ()
-main = do
-    testVoid
-    testIntConst
-    testIntConstBound
-    testIntId
+-- |A program that swaps two variables
+-- Uses simultaneous assignment, so might break assignment semantics sometimes.
+swapSimultaneous :: Program
+swapSimultaneous = program [("x", int), ("y", int)] [("x", int), ("y", int)] [
+        assign ["x", "y"] [ref "y", ref "x"]
+    ]
+
+-- |If the substitution goes wrong, we get either x == x or y == y
+testSwapSimultaneous :: Property
+testSwapSimultaneous = once $ p === q
+    where
+    q = ref "x" !=. ref "y"
+    p = wlp swapSimultaneous q
+
+-- Evil QuickCheck TemplateHaskell hackery
+return []
+main = $quickCheckAll
