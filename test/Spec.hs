@@ -55,11 +55,12 @@ swapSimultaneous = program [("x", int), ("y", int)] [("x", int), ("y", int)] [
     ]
 
 -- |If the substitution goes wrong, we get either x == x or y == y
-testSwapSimultaneous :: Property
-testSwapSimultaneous = once $ p === q
+prop_SwapSimultaneous :: Property
+prop_SwapSimultaneous = once $ p === expectedP
     where
     q = ref "x" !=. ref "y"
     p = wlp swapSimultaneous q
+    expectedP = ref "y" !=. ref "x"
 
 -- Evil QuickCheck TemplateHaskell hackery
 return []

@@ -2,6 +2,8 @@ module Lib where
 
 import Util
 
+import qualified Data.Map as Map
+
 -- *Small syntax
 -- Various smaller-scale syntax such as tokens and lists of them.
 
@@ -187,16 +189,22 @@ bool = Primitive BoolType
 ints = Array IntType
 bools = Array BoolType
 
--- |Replace all occurrences of a free variable by the given expression
-replaceVar :: Expression -> (Name, Expression) -> Expression
-replaceVar q (n, expr) = r q
-    where r :: Expression -> Expression
-          r (LiteralExpr l) = LiteralExpr l
-          r (NameExpr name) = if name == n then expr else NameExpr name
-          r (Operated op left right) = Operated op (r left) (r right)
-          r (Negation e) = Negation (r e)
-          r (Index name e) = Index name (r e)
-          r f@(Forall v@(Variable name _) e) = if name == n then f else Forall v (r e)
+-- |Replace all occurrences of given free variables by the given expressions.
+-- Will also nicely handle the case of simultaneous substitutions.
+replaceVars :: Expression -> Map.Map Name Expression -> Expression
+replaceVars (LiteralExpr l) _ = LiteralExpr l
+replaceVars (NameExpr name) substs = case Map.lookup name substs of
+    Just result -> result
+    Nothing -> NameExpr name
+replaceVars (Operated op left right) substs = Operated op left' right'
+    where
+    left' = replaceVars left substs
+    right' = replaceVars right substs
+replaceVars (Negation e) substs = Negation $ replaceVars e substs
+replaceVars (Index name e) substs = Index name $ replaceVars e substs
+replaceVars f@(Forall v@(Variable name _) e) substs = Forall v $ replaceVars e substs'
+    where
+    substs' = Map.delete name substs
 
 -- |Calculate the wlp of a program based on the given postcondition
 wlp :: Program -> Expression -> Expression
@@ -206,7 +214,7 @@ wlp (Program _ _ s) q = wlp' s q -- TODO: recursion requires that we store this 
 wlp' :: Statement -> Expression -> Expression
 wlp' Skip q = q
 -- Assignment requires simultaneously replacing all free variables in the postcondition
-wlp' (Assign targets exprs) q = foldr (flip replaceVar) q (zip targets exprs)
+wlp' (Assign targets exprs) q = replaceVars q $ Map.fromList $ zip targets exprs
 
 
 someFunc :: IO ()
