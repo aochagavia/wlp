@@ -35,7 +35,18 @@ data BinaryOp
     | LessThan -- ^Strict inequality of two numbers.
     | LessEqual -- ^Loose inequality of two numbers.
     | Equal -- ^Equality of two numbers.
-    deriving (Eq, Ord, Show)
+    deriving (Eq, Ord)
+
+instance Show BinaryOp where
+    show Plus = "+"
+    show Minus = "-"
+    show Wedge = "/\\"
+    show Vee = "\\/"
+    show Implies = "=>"
+    show LessThan = "<"
+    show LessEqual = "<="
+    show Equal = "=="
+
 -- |The type of a variable.
 data Type
     = Primitive PrimitiveType -- ^Types that can't be reduced further.
@@ -50,7 +61,10 @@ data PrimitiveType
 data Literal
     = LiteralInt Int
     | LiteralBool Bool
-    deriving (Eq, Ord, Show)
+    deriving (Eq, Ord)
+instance Show Literal where
+    show (LiteralInt i) = show i
+    show (LiteralBool b) = show b
 
 -- *Big syntax
 -- Pieces of syntax that are much more complicated structures of small syntax.
@@ -101,7 +115,15 @@ data Expression
         -- ^Look up an index in an array.
     | Forall BoundVariable Expression
         -- ^Quantify a predicate over all values the variable can assume.
-    deriving (Eq, Ord, Show)
+    deriving (Eq, Ord)
+
+instance Show Expression where
+    show (LiteralExpr l) = "(" ++ show l ++ ")"
+    show (NameExpr n) = n
+    show (Operated op ex1 ex2) = "(" ++ show ex1 ++ " " ++ show op ++ " " ++ show ex2 ++ ")"
+    show (Negation expr) = "~(" ++ show expr ++ ")"
+    show (Index var expr) = var ++ "[" ++ show expr ++ "]"
+    show (Forall var expr) = "(forall " ++ show var ++ " . " ++ show expr ++ ")"
 
 -- *Building an AST
 -- The data types defined above are quite impractical, so let's make them easier to read.
@@ -215,7 +237,10 @@ wlp' :: Statement -> Expression -> Expression
 wlp' Skip q = q
 -- Assignment requires simultaneously replacing all free variables in the postcondition
 wlp' (Assign targets exprs) q = replaceVars q $ Map.fromList $ zip targets exprs
-
+wlp' (Sequence stmt1 stmt2) q = wlp' stmt1 $ wlp' stmt2 q
+wlp' (Assert condition) q = condition /\. q
+wlp' (Assume condition) q = condition =>. q
+wlp' stmt q = error $ "Statement " ++ show stmt ++ " has no wlp defined!"
 
 someFunc :: IO ()
 someFunc = putStrLn "someFunc"

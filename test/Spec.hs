@@ -62,6 +62,22 @@ prop_SwapSimultaneous = once $ p === expectedP
     p = wlp swapSimultaneous q
     expectedP = ref "y" !=. ref "x"
 
+-- |A program that includes pre- and postconditions.
+negateNumber :: Program
+negateNumber = program [("x", int)] [("y", int)] [
+        assume $ i (-1) <=. ref "x",
+        assign ["y"] [i 0 -. ref "x"],
+        assert $ i 1 >=. ref "y"
+    ]
+
+-- |Check the specification is preserved by wlp
+prop_negateNumber :: Property
+prop_negateNumber = once $ p === expectedP
+    where
+    q = b True
+    p = wlp negateNumber q
+    expectedP = (i (-1) <=. ref "x") =>. ((i 1 >=. (i 0 -. ref "x")) /\. q)
+
 -- Evil QuickCheck TemplateHaskell hackery
 return []
 main = $quickCheckAll
