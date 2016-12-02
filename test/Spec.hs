@@ -1,6 +1,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 
 import Lib
+import Syntax
 
 import Test.QuickCheck
 
