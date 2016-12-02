@@ -96,6 +96,27 @@ prop_localVarsWork = once $ p === expectedP
     p = wlp overwriteLocalVar q
     expectedP = ref "x" <. i 0
 
+-- |The example program E from the assignment
+exampleProgram :: Program
+exampleProgram = program [("x", int)] [("y", int)] [
+        assume $ i (-1) <=. ref "x",
+        while (i 0 <. ref "x") [ assign ["x"] [ref "x" -. i 1]],
+        assign ["y"] [ref "x"],
+        assert $ ref "y" ==. i 0
+    ]
+
+prop_exampleProgramPaths :: Property
+prop_exampleProgramPaths = once $ foundPaths === expectedPaths
+    where
+    foundPaths :: [[Statement]]
+    foundPaths = map unSequence $ paths 7 exampleProgram
+    expectedPaths :: [[Statement]]
+    expectedPaths = [
+            [assume $ i (-1) <=. ref "x", assume $ neg $ i 0 <. ref "x", assign ["y"] [ref "x"], assert $ ref "y" ==. i 0],
+            [assume $ i (-1) <=. ref "x", assume $ i 0 <. ref "x", assign ["x"] [ref "x" -. i 1], assume $ neg $ i 0 <. ref "x", assign ["y"] [ref "x"], assert $ ref "y" ==. i 0],
+            [assume $ i (-1) <=. ref "x", assume $ i 0 <. ref "x", assign ["x"] [ref "x" -. i 1], assume $ i 0 <. ref "x", assign ["x"] [ref "x" -. i 1], assume $ neg $ i 0 <. ref "x", assign ["y"] [ref "x"], assert $ ref "y" ==. i 0]
+        ]
+
 -- Evil QuickCheck TemplateHaskell hackery
 return []
 main = $quickCheckAll

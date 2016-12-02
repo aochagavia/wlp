@@ -133,6 +133,12 @@ foldSequence :: [Statement] -> Statement
 foldSequence [] = Skip
 foldSequence xs = foldr1 Sequence xs
 
+-- |Make a single 'Statement' into a list of 'Statement's.
+-- Is not exactly the inverse of 'foldSequence' since 'Skip' will result in '[Skip]'.
+unSequence :: Statement -> [Statement]
+unSequence (Sequence s1 s2) = unSequence s1 ++ unSequence s2
+unSequence stmt = [stmt]
+
 -- |Convert a list of names and types to a list of 'Variable's
 toVariables :: [(Name, Type)] -> [Variable]
 toVariables = map makeVariable
