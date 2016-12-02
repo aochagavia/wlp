@@ -3,6 +3,7 @@ module Lib where
 import Util
 
 import qualified Data.Map as Map
+import qualified Data.Set as Set
 
 -- *Small syntax
 -- Various smaller-scale syntax such as tokens and lists of them.
@@ -211,13 +212,21 @@ bool = Primitive BoolType
 ints = Array IntType
 bools = Array BoolType
 
+-- |Remove type specifier from variable declaration.
+toName :: Variable -> Name
+toName (Variable name _) = name
+
+-- |Replace the variable if it occurs in the map, keep it the same otherwise
+replaceVar :: Name -> Map.Map Name Expression -> Expression
+replaceVar name substs = case Map.lookup name substs of
+    Just result -> result
+    Nothing -> NameExpr name
+
 -- |Replace all occurrences of given free variables by the given expressions.
 -- Will also nicely handle the case of simultaneous substitutions.
 replaceVars :: Expression -> Map.Map Name Expression -> Expression
 replaceVars (LiteralExpr l) _ = LiteralExpr l
-replaceVars (NameExpr name) substs = case Map.lookup name substs of
-    Just result -> result
-    Nothing -> NameExpr name
+replaceVars (NameExpr name) substs = replaceVar name substs
 replaceVars (Operated op left right) substs = Operated op left' right'
     where
     left' = replaceVars left substs
@@ -227,6 +236,65 @@ replaceVars (Index name e) substs = Index name $ replaceVars e substs
 replaceVars f@(Forall v@(Variable name _) e) substs = Forall v $ replaceVars e substs'
     where
     substs' = Map.delete name substs
+
+-- |Replace all occurrences of given free variables by the given expressions.
+-- Will also nicely handle the case of simultaneous substitutions.
+replaceVarsStmt :: Statement -> Map.Map Name Expression -> Statement
+replaceVarsStmt Skip _ = Skip
+replaceVarsStmt (Assert expr) substs = Assert $ replaceVars expr substs
+replaceVarsStmt (Assume expr) substs = Assume $ replaceVars expr substs
+replaceVarsStmt (Assign vars exprs) substs = Assign replacedVars replacedExprs
+    where
+    replacedVars = map (flip replaceVar' substs) vars
+    replaceVar' name substs = case replaceVar name substs of
+        NameExpr result -> result
+    replacedExprs = map (flip replaceVars substs) exprs
+replaceVarsStmt (Sequence stmt1 stmt2) substs = Sequence stmt1' stmt2'
+    where
+    stmt1' = replaceVarsStmt stmt1 substs
+    stmt2' = replaceVarsStmt stmt2 substs
+replaceVarsStmt (If cond stmt1 stmt2) substs = If cond' stmt1' stmt2'
+    where
+    cond' = replaceVars cond substs
+    stmt1' = replaceVarsStmt stmt1 substs
+    stmt2' = replaceVarsStmt stmt2 substs
+replaceVarsStmt (While cond stmt) substs = While cond' stmt'
+    where
+    cond' = replaceVars cond substs
+    stmt' = replaceVarsStmt stmt substs
+replaceVarsStmt (Var vars stmt) substs = Var vars $ replaceVarsStmt stmt substs'
+    where
+    substs' = foldr (Map.delete) substs $ map toName vars
+
+-- |Determine all free variables of the statement
+freeVarsStmt :: Statement -> Set.Set Name
+freeVarsStmt Skip = Set.empty
+freeVarsStmt (Assert expr) = freeVarsExpr expr
+freeVarsStmt (Assume expr) = freeVarsExpr expr
+freeVarsStmt (Assign vars exprs) = Set.fromList vars `Set.union` concatMapSet freeVarsExpr exprs
+    where
+    concatMapSet :: Ord b => (a -> Set.Set b) -> [a] -> Set.Set b
+    concatMapSet f xs = foldr Set.union Set.empty $ map f xs
+freeVarsStmt (Sequence stmt1 stmt2) = freeVarsStmt stmt1 `Set.union` freeVarsStmt stmt2
+freeVarsStmt (If cond stmt1 stmt2) = freeVarsExpr cond `Set.union` freeVarsStmt stmt1 `Set.union` freeVarsStmt stmt2
+freeVarsStmt (While cond stmt) = freeVarsExpr cond `Set.union` freeVarsStmt stmt
+freeVarsStmt (Var exclude stmt) = Set.difference (freeVarsStmt stmt) (Set.fromList $ map toName exclude)
+
+-- |Determine all free variables of the expression
+freeVarsExpr :: Expression -> Set.Set Name
+freeVarsExpr (LiteralExpr _) = Set.empty
+freeVarsExpr (NameExpr name) = Set.singleton name
+freeVarsExpr (Operated _ expr1 expr2) = freeVarsExpr expr1 `Set.union` freeVarsExpr expr2
+freeVarsExpr (Negation expr) = freeVarsExpr expr
+freeVarsExpr (Index name expr) = name `Set.insert` freeVarsExpr expr
+freeVarsExpr (Forall (Variable name _) expr) = name `Set.delete` freeVarsExpr expr
+
+-- |Replace all given variables so that they don't clash with the free variables
+refresh :: [Name] -> Set.Set Name -> Statement -> Statement
+refresh old exclude = flip replaceVarsStmt replacements
+    where
+    newVars = filter (not . (`Set.member` exclude)) ["x" ++ show n | n <- [1..]]
+    replacements = Map.fromList $ zip old $ map ref newVars
 
 -- |Calculate the wlp of a program based on the given postcondition
 wlp :: Program -> Expression -> Expression
@@ -240,7 +308,16 @@ wlp' (Assign targets exprs) q = replaceVars q $ Map.fromList $ zip targets exprs
 wlp' (Sequence stmt1 stmt2) q = wlp' stmt1 $ wlp' stmt2 q
 wlp' (Assert condition) q = condition /\. q
 wlp' (Assume condition) q = condition =>. q
+-- Local variables get renamed so they don't clash with those in the condition
+wlp' (Var vars stmt) q = wlp' (refresh names currentFree stmt) q
+    where
+    currentFree :: Set.Set Name
+    currentFree = freeVarsStmt stmt `Set.union` freeVarsExpr q
+    names :: [Name]
+    names = map toName vars
 wlp' stmt q = error $ "Statement " ++ show stmt ++ " has no wlp defined!"
+
+
 
 someFunc :: IO ()
 someFunc = putStrLn "someFunc"

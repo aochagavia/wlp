@@ -78,6 +78,23 @@ prop_negateNumber = once $ p === expectedP
     p = wlp negateNumber q
     expectedP = (i (-1) <=. ref "x") =>. ((i 1 >=. (i 0 -. ref "x")) /\. q)
 
+-- |Overwrites a local variable but doesn't modify anything else.
+overwriteLocalVar :: Program
+overwriteLocalVar = program [("x", int)] [("y", int)] [
+        var [("x", int)] [
+            assign ["x"] [i 37]
+        ],
+        assign ["y"] [ref "x"]
+    ]
+
+-- |Overwriting a local variable shouldn't overwrite the other variable.
+prop_localVarsWork :: Property
+prop_localVarsWork = once $ p === expectedP
+    where
+    q = ref "y" <. i 0
+    p = wlp overwriteLocalVar q
+    expectedP = ref "x" <. i 0
+
 -- Evil QuickCheck TemplateHaskell hackery
 return []
 main = $quickCheckAll
