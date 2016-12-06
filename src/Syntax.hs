@@ -218,17 +218,3 @@ bools = Array BoolType
 -- |Remove type specifier from variable declaration.
 toName :: Variable -> Name
 toName (Variable name _) = name
-
-data Range = RangeInt IntRange
-           | RangeBool BoolRange
-
-data MyInt = Bounded Int
-           | Infinite
-
-data IntRange = InclusiveInclusive MyInt MyInt
-              | Disjoint Range Range
-
-data BoolRange = True
-               | False
-               | TrueOrFalse
-

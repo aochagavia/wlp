@@ -1,11 +1,13 @@
 module Lib where
 
+import Predicate
 import Rewriting
 import Syntax
 import Util
 
 import qualified Data.Map as Map
 import qualified Data.Set as Set
+import Test.QuickCheck
 
 -- |Calculate the wlp of a program based on the given postcondition
 wlp :: Program -> Expression -> Expression
@@ -64,6 +66,87 @@ paths n (Program _ _ s) = map fst $ paths' n s
     paths' n s@(Var vars stmt) = do
         (path, length) <- paths' n stmt
         return (Var vars path, length)
+
+-- |Normalize a predicate to eliminate various implications and trivial truths.
+-- This isn't a full reduction but should get us far enough to generate test cases.
+normalize :: Predicate -> Predicate
+-- | ~ ~ a === a
+normalize (Negation (Negation exp)) = exp -- Which is not true in constructive logic!
+normalize (Negation exp) = Negation $ normalize exp
+-- | e1 => (e2 => e3) === (e1 /\ e2) => e3
+normalize (Operated Implies e1 (Operated Implies e2 e3)) = normalize $ (e1' /\. e2') =>. e3'
+    where
+    e1' = normalize e1
+    e2' = normalize e2
+    e3' = normalize e3
+-- | (True /\ e1) = e1 and (False /\ e1) = False (and symmetrically)
+normalize (Operated Wedge e1 (LiteralExpr (LiteralBool True))) = normalize e1
+normalize (Operated Wedge e1 (LiteralExpr (LiteralBool False))) = b False
+normalize (Operated Wedge (LiteralExpr (LiteralBool True)) e1) = normalize e1
+normalize (Operated Wedge (LiteralExpr (LiteralBool False)) e1) = b False
+-- | (True \/ e1) = True and (False \/ e1) = e1 (and symmetrically)
+normalize (Operated Vee e1 (LiteralExpr (LiteralBool True))) = b True
+normalize (Operated Vee e1 (LiteralExpr (LiteralBool False))) = normalize e1
+normalize (Operated Vee (LiteralExpr (LiteralBool True)) e1) = b True
+normalize (Operated Vee (LiteralExpr (LiteralBool False)) e1) = normalize e1
+-- | True -> e1 === e1 and False -> e1 === True
+normalize (Operated Implies (LiteralExpr (LiteralBool True)) e1) = normalize e1
+normalize (Operated Implies (LiteralExpr (LiteralBool False)) e1) = b True
+normalize (Operated op e1 e2) = Operated op (normalize e1) (normalize e2)
+normalize (Forall var exp) = Forall var (normalize exp)
+normalize e = e
+
+-- | Instantiate the free variables of a predicate and check that it holds.
+-- Uses 'Gen' to convert ranges of acceptable values to a single value.
+testPredicate :: Predicate -> Gen Bool
+testPredicate pred = literalToBool <$> evaluateClosed pred <$> instantiations pred
+    where
+    literalToBool :: Literal -> Bool
+    literalToBool lit = case lit of
+        LiteralBool b -> b
+        LiteralInt i -> error "TypeError: cannot cast int to bool"
+    evaluateClosed :: Expression -> Map.Map Name Literal -> Literal
+    evaluateClosed (LiteralExpr l) = l
+    evaluateClosed (NameExpr name) env = env Map.! name
+    evaluateClosed (Operated op e1 e2) env = evaluateOp op e1' e2'
+        where
+        e1' = evaluateClosed e1 env
+        e2' = evaluateClosed e2 env
+    evaluateClosed (Negation e1) env = evalNeg e1'
+        where
+        e1' = evaluateClosed e1 env
+    evaluateClosed (Forall var expr) env = error "forall is undecidable!"
+
+    -- Evaluate expressions of literals.
+    -- When types are incorrect, this gives an error.
+    evalNeg :: Literal -> Literal
+    evalNeg (LiteralBool b1) = LiteralBool $ not b1
+    evalOp :: BinaryOp -> Literal -> Literal -> Literal
+    evalOp Plus (LiteralInt n1) (LiteralInt n2) = LiteralInt $ n1 + n2
+    evalOp Minus (LiteralInt n1) (LiteralInt n2) = LiteralInt $ n1 - n2
+    evalOp Wedge (LiteralBool b1) (LiteralBool b2) = LiteralBool $ b1 && b2
+    evalOp Vee (LiteralBool b1) (LiteralBool b2) = LiteralBool $ b1 || b2
+    evalOp Implies (LiteralBool b1) (LiteralBool b2) = LiteralBool $ (not b1) || b2
+    evalOp LessThan (LiteralInt n1) (LiteralInt n2) = LiteralBool $ n1 < n2
+    evalOp LessEqual (LiteralInt n1) (LiteralInt n2) = LiteralBool $ n1 <= n2
+    evalOp Equal (LiteralInt n1) (LiteralInt n2) = LiteralBool $ n1 == n2
+
+    instantiations :: Predicate -> Gen (Map.Map Name Literal)
+    instantiations pred = mapM rangeToGen $ mkRange pred
+
+    rangeToGen :: Range -> Gen Literal
+    rangeToGen (RangeInt r) = LiteralInt $ rangeToGenI r
+    rangeToGen (RangeBool r) = LiteralBool $ rangeToGenB r
+
+    rangeToGenI :: RangeInt -> Gen Int
+    rangeToGenI (InclusiveInclusive lower upper) = element [lower .. upper]
+    rangeToGenI (Disjoint r1 r2) = oneof [rangeToGenI r1, rangeToGenI r2]
+    rangeToGenI (InfiniteLeft upper) = element [upper, upper-1 ..]
+    rangeToGenI (InfiniteRight lower) = element [lower ..]
+    rangeToGenB :: RangeBool -> Gen Bool
+    rangeToGenB RTrue = pure True
+    rangeToGenB RFalse = pure False
+    rangeToGenB TrueOrFalse = element [True, False]
 
 someFunc :: IO ()
 someFunc = putStrLn "someFunc"
