@@ -117,6 +117,21 @@ prop_exampleProgramPaths = once $ foundPaths === expectedPaths
             [assume $ i (-1) <=. ref "x", assume $ i 0 <. ref "x", assign ["x"] [ref "x" -. i 1], assume $ i 0 <. ref "x", assign ["x"] [ref "x" -. i 1], assume $ neg $ i 0 <. ref "x", assign ["y"] [ref "x"], assert $ ref "y" ==. i 0]
         ]
 
+prop_exampleProgramIsWrong :: Property
+prop_exampleProgramIsWrong = expectFailure $ conjoin $ map (testPredicate . wlpPath) $ paths 7 exampleProgram
+
+-- |The example program E from the assignment, but now it works
+exampleProgramFixed :: Program
+exampleProgramFixed = program [("x", int)] [("y", int)] [
+        assume $ i 0 <=. ref "x",
+        while (i 0 <. ref "x") [ assign ["x"] [ref "x" -. i 1]],
+        assign ["y"] [ref "x"],
+        assert $ ref "y" ==. i 0
+    ]
+
+prop_exampleProgramIsFixed :: Property
+prop_exampleProgramIsFixed = conjoin $ map (testPredicate . wlpPath) $ paths 7 exampleProgramFixed
+
 -- Evil QuickCheck TemplateHaskell hackery
 return []
 main = $quickCheckAll
