@@ -100,7 +100,7 @@ normalize e = e
 -- | Instantiate the free variables of a predicate and check that it holds.
 -- Uses 'Gen' to convert ranges of acceptable values to a single value.
 testPredicate :: Predicate -> Property
-testPredicate pred = forAll instantiations checkCase
+testPredicate pred = forAll instantiations checkCase -- TODO: if instantiations contains an empty range, pass immediately
     where
     checkCase :: Map.Map Name Literal -> Bool
     checkCase = literalToBool . evaluateClosed pred
@@ -136,7 +136,7 @@ testPredicate pred = forAll instantiations checkCase
     evalOp Equal (LiteralInt n1) (LiteralInt n2) = LiteralBool $ n1 == n2
 
     instantiations :: Gen (Map.Map Name Literal)
-    instantiations = mapM rangeToGen $ nonTrivTrue pred
+    instantiations = mapM rangeToGen $ defaultInfinite bool pred $ nonTrivTrue pred
 
     rangeToGen :: Range -> Gen Literal
     rangeToGen (RangeInt r) = LiteralInt <$> rangeToGenI r
@@ -144,8 +144,10 @@ testPredicate pred = forAll instantiations checkCase
 
     rangeToGenI :: IntRange -> Gen Int
     rangeToGenI (InclusiveInclusive MinInfinite MaxInfinite) = arbitrary :: Gen Int
-    rangeToGenI (InclusiveInclusive MinInfinite (Bounded upper)) = elements [upper, upper-1 ..]
-    rangeToGenI (InclusiveInclusive (Bounded lower) MaxInfinite) = elements [lower ..]
+    rangeToGenI (InclusiveInclusive MinInfinite (Bounded upper)) = sized (\size ->
+        choose (upper - size, upper))
+    rangeToGenI (InclusiveInclusive (Bounded lower) MaxInfinite) = sized (\size ->
+        choose (lower, lower + size))
     rangeToGenI (InclusiveInclusive (Bounded lower) (Bounded upper)) = elements [lower .. upper]
     rangeToGenI (Disjoint r1 r2) = oneof [rangeToGenI r1, rangeToGenI r2]
     rangeToGenB :: BoolRange -> Gen Bool

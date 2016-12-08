@@ -28,9 +28,7 @@ nonTrivTrue (Negation p) = nonTrivFalse p
 nonTrivTrue (Operated Implies p q) = nonTrivFalse p `intersectRanges` nonTrivTrue q
 nonTrivTrue (Operated Wedge p q) = nonTrivTrue p `unionRanges` nonTrivTrue q
 nonTrivTrue (Operated Vee p q) = nonTrivTrue p `intersectRanges` nonTrivTrue q
-nonTrivTrue (Operated LessThan p q) = fullRangeI p `unionRanges` fullRangeI q
-nonTrivTrue (Operated LessEqual p q) = fullRangeI p `unionRanges` fullRangeI q
-nonTrivTrue (Operated Equal p q) = fullRangeI p `unionRanges` fullRangeI q
+nonTrivTrue (Operated _ _ _) = Map.empty -- We could go deeper but let's use the default.
 
 -- |Find a range for the variables that excludes assignments that make it trivially false.
 -- See 'nonTrivTrue' for the reasoning.
@@ -53,8 +51,15 @@ nonTrivFalse (Operated Equal (LiteralExpr (LiteralInt i)) (NameExpr n))
 nonTrivFalse (Operated Equal (NameExpr n) (LiteralExpr (LiteralInt i)))
     = Map.singleton n $ bounded i i
 
--- |Give every free variable in the predicate the full range of integers.
-fullRangeI :: Predicate -> Map.Map Name Range
-fullRangeI pred = Map.fromList [(var, undefined) | var <- free]
+-- |Give infinite range to free variables without a range
+-- We need a type to handle the case where the expression is a single name
+defaultInfinite :: Type -> Expression -> Map.Map Name Range -> Map.Map Name Range
+defaultInfinite ty expr rangeHavers = rangeHavers `Map.union` fullRange ty expr
+
+-- |Give all free variables an infinite range, using the type of the expression
+fullRange :: Type -> Expression -> Map.Map Name Range
+fullRange ty expr = fullRangeFor <$> typeInferExpr ty expr
     where
-    free = Set.toList $ freeVarsExpr pred
+    fullRangeFor :: Type -> Range
+    fullRangeFor (Primitive BoolType) = RangeBool $ Set.fromList [True, False]
+    fullRangeFor (Primitive IntType) = RangeInt $ InclusiveInclusive MinInfinite MaxInfinite

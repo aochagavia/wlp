@@ -69,7 +69,29 @@ freeVarsStmt (If cond stmt1 stmt2) = freeVarsExpr cond `Set.union` freeVarsStmt 
 freeVarsStmt (While cond stmt) = freeVarsExpr cond `Set.union` freeVarsStmt stmt
 freeVarsStmt (Var exclude stmt) = Set.difference (freeVarsStmt stmt) (Set.fromList $ map toName exclude)
 
--- |Determine all free variables of the expression
+-- |Infer the type of all free variables in the expression.
+-- We need to know the type the expression returns to handle the case of NameExpr.
+typeInferExpr :: Type -> Expression -> Map.Map Name Type
+typeInferExpr return (LiteralExpr _) = Map.empty
+typeInferExpr return (NameExpr name) = Map.singleton name return
+typeInferExpr (Primitive BoolType) (Negation expr) = typeInferExpr bool expr
+typeInferExpr (Primitive prim) (Index name expr) = inserted
+    where
+    inserted = Map.insert name arrayType indexMap
+    arrayType = Array prim
+    indexMap = typeInferExpr int expr
+typeInferExpr (Primitive BoolType) (Forall (Variable name _) expr) = deleted
+    where
+    deleted = name `Map.delete` typeInferExpr bool expr
+typeInferExpr return (Operated op expr1 expr2) = left `Map.union` right
+    where
+    -- TODO: type checking!
+    (expectedReturn, expectedLeft, expectedRight) = operatorType op
+    left = typeInferExpr expectedLeft expr1
+    right = typeInferExpr expectedRight expr2
+
+-- |Determine all free variables of the expression.
+-- This is more general than keysSet . typeInferExpr because we also accept untyped expressions.
 freeVarsExpr :: Expression -> Set.Set Name
 freeVarsExpr (LiteralExpr _) = Set.empty
 freeVarsExpr (NameExpr name) = Set.singleton name

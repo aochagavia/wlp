@@ -55,6 +55,7 @@ data PrimitiveType
     = IntType -- ^Integer number.
     | BoolType -- ^Boolean proposition.
     deriving (Eq, Ord, Show)
+
 -- |A value of a PrimitiveType
 data Literal
     = LiteralInt Int
@@ -218,3 +219,14 @@ bools = Array BoolType
 -- |Remove type specifier from variable declaration.
 toName :: Variable -> Name
 toName (Variable name _) = name
+
+-- |Get the return type and argument types to the operator, for type checking.
+operatorType :: BinaryOp -> (Type, Type, Type)
+operatorType Plus = (int, int, int)
+operatorType Minus = (int, int, int)
+operatorType Wedge = (bool, bool, bool)
+operatorType Vee = (bool, bool, bool)
+operatorType Implies = (bool, bool, bool)
+operatorType LessThan = (bool, int, int)
+operatorType LessEqual = (bool, int, int)
+operatorType Equal = (bool, int, int)
