@@ -98,17 +98,20 @@ normalize e = e
 
 -- | Instantiate the free variables of a predicate and check that it holds.
 -- Uses 'Gen' to convert ranges of acceptable values to a single value.
-testPredicate :: Predicate -> Gen Bool
-testPredicate pred = literalToBool <$> evaluateClosed pred <$> instantiations pred
+testPredicate :: Predicate -> Property
+testPredicate pred = forAll instantiations checkCase
     where
+    checkCase :: Map.Map Name Literal -> Bool
+    checkCase = literalToBool . evaluateClosed pred
+
     literalToBool :: Literal -> Bool
     literalToBool lit = case lit of
         LiteralBool b -> b
         LiteralInt i -> error "TypeError: cannot cast int to bool"
     evaluateClosed :: Expression -> Map.Map Name Literal -> Literal
-    evaluateClosed (LiteralExpr l) = l
+    evaluateClosed (LiteralExpr l) env = l
     evaluateClosed (NameExpr name) env = env Map.! name
-    evaluateClosed (Operated op e1 e2) env = evaluateOp op e1' e2'
+    evaluateClosed (Operated op e1 e2) env = evalOp op e1' e2'
         where
         e1' = evaluateClosed e1 env
         e2' = evaluateClosed e2 env
@@ -131,22 +134,23 @@ testPredicate pred = literalToBool <$> evaluateClosed pred <$> instantiations pr
     evalOp LessEqual (LiteralInt n1) (LiteralInt n2) = LiteralBool $ n1 <= n2
     evalOp Equal (LiteralInt n1) (LiteralInt n2) = LiteralBool $ n1 == n2
 
-    instantiations :: Predicate -> Gen (Map.Map Name Literal)
-    instantiations pred = mapM rangeToGen $ mkRange pred
+    instantiations :: Gen (Map.Map Name Literal)
+    instantiations = mapM rangeToGen $ nonTrivTrue pred
 
     rangeToGen :: Range -> Gen Literal
-    rangeToGen (RangeInt r) = LiteralInt $ rangeToGenI r
-    rangeToGen (RangeBool r) = LiteralBool $ rangeToGenB r
+    rangeToGen (RangeInt r) = LiteralInt <$> rangeToGenI r
+    rangeToGen (RangeBool r) = LiteralBool <$> rangeToGenB r
 
-    rangeToGenI :: RangeInt -> Gen Int
-    rangeToGenI (InclusiveInclusive lower upper) = element [lower .. upper]
+    rangeToGenI :: IntRange -> Gen Int
+    rangeToGenI (InclusiveInclusive Infinite Infinite) = arbitrary :: Gen Int
+    rangeToGenI (InclusiveInclusive Infinite (Bounded upper)) = elements [upper, upper-1 ..]
+    rangeToGenI (InclusiveInclusive (Bounded lower) Infinite) = elements [lower ..]
+    rangeToGenI (InclusiveInclusive (Bounded lower) (Bounded upper)) = elements [lower .. upper]
     rangeToGenI (Disjoint r1 r2) = oneof [rangeToGenI r1, rangeToGenI r2]
-    rangeToGenI (InfiniteLeft upper) = element [upper, upper-1 ..]
-    rangeToGenI (InfiniteRight lower) = element [lower ..]
-    rangeToGenB :: RangeBool -> Gen Bool
+    rangeToGenB :: BoolRange -> Gen Bool
     rangeToGenB RTrue = pure True
     rangeToGenB RFalse = pure False
-    rangeToGenB TrueOrFalse = element [True, False]
+    rangeToGenB TrueOrFalse = elements [True, False]
 
 someFunc :: IO ()
 someFunc = putStrLn "someFunc"

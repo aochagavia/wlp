@@ -8,16 +8,20 @@ import qualified Data.Set as Set
 
 data Range = RangeInt IntRange
            | RangeBool BoolRange
+    deriving (Show)
 
 data MyInt = Bounded Int
            | Infinite
+    deriving (Show)
 
 data IntRange = InclusiveInclusive MyInt MyInt
-              | Disjoint Range Range
+              | Disjoint IntRange IntRange
+    deriving (Show)
 
 data BoolRange = RTrue
                | RFalse
                | TrueOrFalse
+    deriving (Show)
 
 leftInfinite, rightInfinite :: Int -> Range
 leftInfinite n = RangeInt $ InclusiveInclusive Infinite $ Bounded n
@@ -25,8 +29,9 @@ rightInfinite n = RangeInt $ InclusiveInclusive (Bounded n) Infinite
 bounded :: Int -> Int -> Range
 bounded low up = RangeInt $ InclusiveInclusive (Bounded low) (Bounded up)
 
-complementRange :: Map.Map k Range -> Map.Map k Range
-complementRange = undefined
+-- |Take the pointwise union or intersection of maps to ranges.
+-- If a key is in both maps, we take union or intersection,
+-- otherwise we use the full range as default.
 unionRange, intersectRange :: Map.Map k Range -> Map.Map k Range -> Map.Map k Range
 unionRange = undefined
 intersectRange = undefined
