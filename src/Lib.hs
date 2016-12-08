@@ -143,13 +143,15 @@ testPredicate pred = forAll instantiations checkCase -- TODO: if instantiations 
     rangeToGen (RangeBool r) = LiteralBool <$> rangeToGenB r
 
     rangeToGenI :: IntRange -> Gen Int
-    rangeToGenI (InclusiveInclusive MinInfinite MaxInfinite) = arbitrary :: Gen Int
-    rangeToGenI (InclusiveInclusive MinInfinite (Bounded upper)) = sized (\size ->
+    rangeToGenI range = oneof $ map intervalToGenI range
+
+    intervalToGenI :: Interval -> Gen Int
+    intervalToGenI (MinInfinite, MaxInfinite) = arbitrary :: Gen Int
+    intervalToGenI (MinInfinite, Bounded upper) = sized (\size ->
         choose (upper - size, upper))
-    rangeToGenI (InclusiveInclusive (Bounded lower) MaxInfinite) = sized (\size ->
+    intervalToGenI (Bounded lower, MaxInfinite) = sized (\size ->
         choose (lower, lower + size))
-    rangeToGenI (InclusiveInclusive (Bounded lower) (Bounded upper)) = elements [lower .. upper]
-    rangeToGenI (Disjoint r1 r2) = oneof [rangeToGenI r1, rangeToGenI r2]
+    intervalToGenI (Bounded lower, Bounded upper) = elements [lower .. upper]
     rangeToGenB :: BoolRange -> Gen Bool
     rangeToGenB = elements . Set.toList
 

@@ -62,4 +62,4 @@ fullRange ty expr = fullRangeFor <$> typeInferExpr ty expr
     where
     fullRangeFor :: Type -> Range
     fullRangeFor (Primitive BoolType) = RangeBool $ Set.fromList [True, False]
-    fullRangeFor (Primitive IntType) = RangeInt $ InclusiveInclusive MinInfinite MaxInfinite
+    fullRangeFor (Primitive IntType) = RangeInt $ [(MinInfinite, MaxInfinite)]
