@@ -50,6 +50,7 @@ nonTrivFalse (Operated Equal (LiteralExpr (LiteralInt i)) (NameExpr n))
     = Map.singleton n $ bounded i i
 nonTrivFalse (Operated Equal (NameExpr n) (LiteralExpr (LiteralInt i)))
     = Map.singleton n $ bounded i i
+nonTrivFalse (Operated _ _ _) = Map.empty -- We could go deeper but let's use the default.
 
 -- |Give infinite range to free variables without a range
 -- We need a type to handle the case where the expression is a single name
