@@ -17,6 +17,7 @@ library
   hs-source-dirs:      src
   exposed-modules:     Lib
                      , Predicate
+                     , Range
                      , Rewriting
                      , Syntax
   other-modules:       Util

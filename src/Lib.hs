@@ -1,6 +1,7 @@
 module Lib where
 
 import Predicate
+import Range
 import Rewriting
 import Syntax
 import Util
@@ -142,15 +143,13 @@ testPredicate pred = forAll instantiations checkCase
     rangeToGen (RangeBool r) = LiteralBool <$> rangeToGenB r
 
     rangeToGenI :: IntRange -> Gen Int
-    rangeToGenI (InclusiveInclusive Infinite Infinite) = arbitrary :: Gen Int
-    rangeToGenI (InclusiveInclusive Infinite (Bounded upper)) = elements [upper, upper-1 ..]
-    rangeToGenI (InclusiveInclusive (Bounded lower) Infinite) = elements [lower ..]
+    rangeToGenI (InclusiveInclusive MinInfinite MaxInfinite) = arbitrary :: Gen Int
+    rangeToGenI (InclusiveInclusive MinInfinite (Bounded upper)) = elements [upper, upper-1 ..]
+    rangeToGenI (InclusiveInclusive (Bounded lower) MaxInfinite) = elements [lower ..]
     rangeToGenI (InclusiveInclusive (Bounded lower) (Bounded upper)) = elements [lower .. upper]
     rangeToGenI (Disjoint r1 r2) = oneof [rangeToGenI r1, rangeToGenI r2]
     rangeToGenB :: BoolRange -> Gen Bool
-    rangeToGenB RTrue = pure True
-    rangeToGenB RFalse = pure False
-    rangeToGenB TrueOrFalse = elements [True, False]
+    rangeToGenB = elements . Set.toList
 
 someFunc :: IO ()
 someFunc = putStrLn "someFunc"
