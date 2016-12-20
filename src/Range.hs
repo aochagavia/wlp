@@ -1,5 +1,6 @@
 module Range where
 
+import qualified Data.Map as Map
 import qualified Data.Set as Set
 
 data Range = RangeInt IntRange
@@ -47,11 +48,11 @@ rFalse = RangeBool $ Set.singleton False
 rTrue = RangeBool $ Set.singleton True
 
 leftInfinite, rightInfinite :: Int -> Range
-leftInfinite n = RangeInt $ [(MinInfinite, Bounded n)]
-rightInfinite n = RangeInt $ [(Bounded n, MaxInfinite)]
+leftInfinite n = RangeInt [(MinInfinite, Bounded n)]
+rightInfinite n = RangeInt [(Bounded n, MaxInfinite)]
 
 bounded :: Int -> Int -> Range
-bounded low up = RangeInt $ [(Bounded low, Bounded up)]
+bounded low up = RangeInt [(Bounded low, Bounded up)]
 
 unionRange :: Range -> Range -> Range
 unionRange (RangeBool b1) (RangeBool b2) = RangeBool $ Set.union b1 b2
@@ -79,3 +80,10 @@ intersectRange (RangeInt r1) (RangeInt r2) = RangeInt $ intersectIntRange r1 r2
         | u1 <= u2 = (max l1 l2, min u1 u2) : intersectIntRange r1 ((l2, u2):r2)
         | u2 <= u1 = (max l1 l2, min u1 u2) : intersectIntRange ((l1, u1):r1) r2
 intersectRange _ _ = error "Called intersectRange with incompatible ranges"
+
+-- |Take the pointwise union or intersection of maps to ranges.
+-- If a key is in both maps, we take union or intersection,
+-- otherwise we use the full range as default.
+unionRanges, intersectRanges :: Ord k => Map.Map k Range -> Map.Map k Range -> Map.Map k Range
+unionRanges = Map.intersectionWith unionRange
+intersectRanges = Map.unionWith intersectRange

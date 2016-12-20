@@ -163,7 +163,7 @@ assume = Assume
 -- |A datatype-agnostic way to write the constructor.
 -- Does not check the number of variables versus expressions.
 assign :: [Name] -> [Expression] -> Statement
-assign vars exprs = Assign vars exprs
+assign = Assign
 -- |A datatype-agnostic way to write the constructor.
 if_ :: Expression -> [Statement] -> [Statement] -> Statement
 if_ cond thens elses = If cond (foldSequence thens) (foldSequence elses)

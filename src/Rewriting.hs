@@ -1,15 +1,14 @@
 module Rewriting where
 
-import Syntax
-
+import Data.Maybe
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 
+import Syntax
+
 -- |Replace the variable if it occurs in the map, keep it the same otherwise
 replaceVar :: Name -> Map.Map Name Expression -> Expression
-replaceVar name substs = case Map.lookup name substs of
-    Just result -> result
-    Nothing -> NameExpr name
+replaceVar name substs = fromMaybe (NameExpr name) (Map.lookup name substs)
 
 -- |Replace all occurrences of given free variables by the given expressions.
 -- Will also nicely handle the case of simultaneous substitutions.
@@ -34,10 +33,10 @@ replaceVarsStmt (Assert expr) substs = Assert $ replaceVars expr substs
 replaceVarsStmt (Assume expr) substs = Assume $ replaceVars expr substs
 replaceVarsStmt (Assign vars exprs) substs = Assign replacedVars replacedExprs
     where
-    replacedVars = map (flip replaceVar' substs) vars
+    replacedVars = map (`replaceVar'` substs) vars
     replaceVar' name substs = case replaceVar name substs of
         NameExpr result -> result
-    replacedExprs = map (flip replaceVars substs) exprs
+    replacedExprs = map (`replaceVars` substs) exprs
 replaceVarsStmt (Sequence stmt1 stmt2) substs = Sequence stmt1' stmt2'
     where
     stmt1' = replaceVarsStmt stmt1 substs
@@ -53,7 +52,7 @@ replaceVarsStmt (While cond stmt) substs = While cond' stmt'
     stmt' = replaceVarsStmt stmt substs
 replaceVarsStmt (Var vars stmt) substs = Var vars $ replaceVarsStmt stmt substs'
     where
-    substs' = foldr (Map.delete) substs $ map toName vars
+    substs' = foldr (Map.delete . toName) substs vars
 
 -- |Determine all free variables of the statement
 freeVarsStmt :: Statement -> Set.Set Name
@@ -62,8 +61,9 @@ freeVarsStmt (Assert expr) = freeVarsExpr expr
 freeVarsStmt (Assume expr) = freeVarsExpr expr
 freeVarsStmt (Assign vars exprs) = Set.fromList vars `Set.union` concatMapSet freeVarsExpr exprs
     where
+    -- |Equivalent to concatMap but makes a set instead of a list.
     concatMapSet :: Ord b => (a -> Set.Set b) -> [a] -> Set.Set b
-    concatMapSet f xs = foldr Set.union Set.empty $ map f xs
+    concatMapSet f = foldr (Set.union . f) Set.empty
 freeVarsStmt (Sequence stmt1 stmt2) = freeVarsStmt stmt1 `Set.union` freeVarsStmt stmt2
 freeVarsStmt (If cond stmt1 stmt2) = freeVarsExpr cond `Set.union` freeVarsStmt stmt1 `Set.union` freeVarsStmt stmt2
 freeVarsStmt (While cond stmt) = freeVarsExpr cond `Set.union` freeVarsStmt stmt

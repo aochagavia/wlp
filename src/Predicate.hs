@@ -7,12 +7,6 @@ import Syntax
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 
--- |Take the pointwise union or intersection of maps to ranges.
--- If a key is in both maps, we take union or intersection,
--- otherwise we use the full range as default.
-unionRanges, intersectRanges :: Ord k => Map.Map k Range -> Map.Map k Range -> Map.Map k Range
-unionRanges = Map.intersectionWith unionRange
-intersectRanges = Map.unionWith intersectRange
 -- |Of course, there are expressions that aren't predicates but we're all very smart people so that won't happen.
 type Predicate = Expression
 
@@ -63,4 +57,34 @@ fullRange ty expr = fullRangeFor <$> typeInferExpr ty expr
     where
     fullRangeFor :: Type -> Range
     fullRangeFor (Primitive BoolType) = RangeBool $ Set.fromList [True, False]
-    fullRangeFor (Primitive IntType) = RangeInt $ [(MinInfinite, MaxInfinite)]
+    fullRangeFor (Primitive IntType) = RangeInt [(MinInfinite, MaxInfinite)]
+
+-- |Normalize a predicate to eliminate various implications and trivial truths.
+-- This isn't a full reduction but should get us far enough to generate test cases.
+normalize :: Predicate -> Predicate
+-- | ~ ~ a === a
+normalize (Negation (Negation exp)) = exp -- Which is not true in constructive logic!
+normalize (Negation exp) = Negation $ normalize exp
+-- | e1 => (e2 => e3) === (e1 /\ e2) => e3
+normalize (Operated Implies e1 (Operated Implies e2 e3)) = normalize $ (e1' /\. e2') =>. e3'
+    where
+    e1' = normalize e1
+    e2' = normalize e2
+    e3' = normalize e3
+-- | (True /\ e1) = e1 and (False /\ e1) = False (and symmetrically)
+normalize (Operated Wedge e1 (LiteralExpr (LiteralBool True))) = normalize e1
+normalize (Operated Wedge e1 (LiteralExpr (LiteralBool False))) = b False
+normalize (Operated Wedge (LiteralExpr (LiteralBool True)) e1) = normalize e1
+normalize (Operated Wedge (LiteralExpr (LiteralBool False)) e1) = b False
+-- | (True \/ e1) = True and (False \/ e1) = e1 (and symmetrically)
+normalize (Operated Vee e1 (LiteralExpr (LiteralBool True))) = b True
+normalize (Operated Vee e1 (LiteralExpr (LiteralBool False))) = normalize e1
+normalize (Operated Vee (LiteralExpr (LiteralBool True)) e1) = b True
+normalize (Operated Vee (LiteralExpr (LiteralBool False)) e1) = normalize e1
+-- | True -> e1 === e1 and False -> e1 === True
+normalize (Operated Implies (LiteralExpr (LiteralBool True)) e1) = normalize e1
+normalize (Operated Implies (LiteralExpr (LiteralBool False)) e1) = b True
+normalize (Operated op e1 e2) = Operated op (normalize e1) (normalize e2)
+normalize (Forall var exp) = Forall var (normalize exp)
+normalize e = e
+
