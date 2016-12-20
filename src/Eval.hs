@@ -18,7 +18,7 @@ type ExpressionAlgebra a =
     , Name -> a -- NameExpr
     , BinaryOp -> a -> a -> a -- Operated
     , a -> a -- Negation
-    , Name -> a -> a -- Index
+    , a -> a -> a -- Index
     , BoundVariable -> a -> a -- Forall
     )
 
@@ -29,13 +29,14 @@ foldExpression (literal, name, operated, negation, index, forall) = fold' where
     fold' (NameExpr n) = name n
     fold' (Operated op e1 e2) = operated op (fold' e1) (fold' e2)
     fold' (Negation e) = negation (fold' e)
-    fold' (Index n e) = index n (fold' e)
+    fold' (Index a e) = index (fold' a) (fold' e)
     fold' (Forall n e) = forall n (fold' e)
 
 -- |Given values for all the free variables in the expression,
 -- evaluate the expression to a single value.
 evaluateClosed :: Expression -> Map.Map Name Literal -> Literal
 evaluateClosed expr env = foldExpression closedAlgebra expr where
+    closedAlgebra :: ExpressionAlgebra Literal
     closedAlgebra = (literal, name, operated, negation, index, forall)
     literal l = l
     name n = env Map.! n
@@ -50,5 +51,6 @@ evaluateClosed expr env = foldExpression closedAlgebra expr where
     operated op _ _ = error $ "TypeError: call to " ++ show op ++ " with wrong argument types"
     negation (LiteralBool b1) = LiteralBool $ not b1
     negation _ = error "TypeError: call to negation with wrong argument types"
-    index = undefined
-    forall = undefined
+    index (LiteralArray arr) (LiteralInt index) = arr !! index
+    -- TODO: make this somewhat usable
+    forall = error "Tautology of predicate logic is undecidable :("

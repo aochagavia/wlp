@@ -19,7 +19,27 @@ wlp (Program _ _ s) = wlp' s -- TODO: recursion requires that we store this valu
 wlp' :: Statement -> Expression -> Expression
 wlp' Skip q = q
 -- Assignment requires simultaneously replacing all free variables in the postcondition
-wlp' (Assign targets exprs) q = replaceVars q $ Map.fromList $ zip targets exprs
+-- However, handling assignment to arrays is a bit more complicated:
+-- translating `a[i]=x` to `a = repby(a,i,e)` means we also have to make sure
+-- the assignments to a now occur sequentially, not simultaneously!
+-- (Which also means we can't just translate before calculating wlp)
+wlp' (Assign targets exprs) q = replaceVars q $ replacements $ zip targets exprs
+    where
+    -- Recursively build the replacements so we can handle sequentiality.
+    -- TODO: use some higher order functions to make it a bit more readable.
+    replacements :: [(AsgTarget, Expression)] -> Map.Map Name Expression
+    replacements [] = Map.empty
+    replacements ((NameTarget name, val) : targets)
+        = Map.insert name val $ replacements targets
+    replacements ((ArrTarget name index, val) : targets)
+        = let result = replacements targets in case Map.lookup name result of
+            -- The array isn't initialized
+            Nothing -> Map.insert name (Repby (ref name) index val) result
+            -- The array is initialized
+            Just arr -> Map.insert name (Repby arr index val) result
+    -- All the replacements in the assignment.
+    assignMap :: Map.Map AsgTarget Expression
+    assignMap = Map.fromList $ zip targets exprs
 wlp' (Sequence stmt1 stmt2) q = wlp' stmt1 $ wlp' stmt2 q
 wlp' (Assert condition) q = condition /\. q
 wlp' (Assume condition) q = condition =>. q
@@ -27,7 +47,7 @@ wlp' (Assume condition) q = condition =>. q
 wlp' (Var vars stmt) q = wlp' (refresh names currentFree stmt) q
     where
     currentFree :: Set.Set Name
-    currentFree = freeVarsStmt stmt `Set.union` freeVarsExpr q
+    currentFree = Set.map toName $ freeVarsStmt stmt `Set.union` freeVarsExpr q
     names :: [Name]
     names = map toName vars
 wlp' stmt q = error $ "Statement " ++ show stmt ++ " has no wlp defined!"
@@ -83,6 +103,11 @@ testPredicate pred = forAll instantiations checkCase -- TODO: if instantiations 
     rangeToGen :: Range -> Gen Literal
     rangeToGen (RangeInt r) = LiteralInt <$> rangeToGenI r
     rangeToGen (RangeBool r) = LiteralBool <$> rangeToGenB r
+    -- Arrays are of arbitrary length, so let's make use of Haskell's laziness
+    rangeToGen arr@(RangeArray r) = do
+        first <- rangeToGen r
+        LiteralArray rest <- rangeToGen arr
+        return $ LiteralArray $ first : rest
 
     rangeToGenI :: IntRange -> Gen Int
     rangeToGenI range = oneof $ map intervalToGenI range

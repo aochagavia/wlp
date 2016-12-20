@@ -18,7 +18,7 @@ prop_void = once $ p === q
 -- |A program that always returns the given Int
 intConst :: Int -> Program
 intConst n = program [] [("r", int)] [
-               assign ["r"] [i n]
+               assignN ["r"] [i n]
            ]
 
 prop_intCont :: Int -> Property
@@ -31,7 +31,7 @@ prop_intCont n = p === expectedP
 -- |An identity program for integers
 intId :: Program
 intId = program [("x", int)] [("r", int)] [
-            assign ["r"] [ref "x"]
+            assignN ["r"] [ref "x"]
         ]
 
 prop_intId :: Property
@@ -52,7 +52,7 @@ prop_intIdBound = once $ p === q
 -- Uses simultaneous assignment, so might break assignment semantics sometimes.
 swapSimultaneous :: Program
 swapSimultaneous = program [("x", int), ("y", int)] [("x", int), ("y", int)] [
-        assign ["x", "y"] [ref "y", ref "x"]
+        assignN ["x", "y"] [ref "y", ref "x"]
     ]
 
 -- |If the substitution goes wrong, we get either x == x or y == y
@@ -67,7 +67,7 @@ prop_SwapSimultaneous = once $ p === expectedP
 negateNumber :: Program
 negateNumber = program [("x", int)] [("y", int)] [
         assume $ i (-1) <=. ref "x",
-        assign ["y"] [i 0 -. ref "x"],
+        assignN ["y"] [i 0 -. ref "x"],
         assert $ i 1 >=. ref "y"
     ]
 
@@ -83,9 +83,9 @@ prop_negateNumber = once $ p === expectedP
 overwriteLocalVar :: Program
 overwriteLocalVar = program [("x", int)] [("y", int)] [
         var [("x", int)] [
-            assign ["x"] [i 37]
+            assignN ["x"] [i 37]
         ],
-        assign ["y"] [ref "x"]
+        assignN ["y"] [ref "x"]
     ]
 
 -- |Overwriting a local variable shouldn't overwrite the other variable.
@@ -100,8 +100,8 @@ prop_localVarsWork = once $ p === expectedP
 exampleProgram :: Program
 exampleProgram = program [("x", int)] [("y", int)] [
         assume $ i (-1) <=. ref "x",
-        while (i 0 <. ref "x") [ assign ["x"] [ref "x" -. i 1]],
-        assign ["y"] [ref "x"],
+        while (i 0 <. ref "x") [ assignN ["x"] [ref "x" -. i 1]],
+        assignN ["y"] [ref "x"],
         assert $ ref "y" ==. i 0
     ]
 
@@ -112,9 +112,9 @@ prop_exampleProgramPaths = once $ foundPaths === expectedPaths
     foundPaths = map unSequence $ paths 7 exampleProgram
     expectedPaths :: [[Statement]]
     expectedPaths = [
-            [assume $ i (-1) <=. ref "x", assume $ neg $ i 0 <. ref "x", assign ["y"] [ref "x"], assert $ ref "y" ==. i 0],
-            [assume $ i (-1) <=. ref "x", assume $ i 0 <. ref "x", assign ["x"] [ref "x" -. i 1], assume $ neg $ i 0 <. ref "x", assign ["y"] [ref "x"], assert $ ref "y" ==. i 0],
-            [assume $ i (-1) <=. ref "x", assume $ i 0 <. ref "x", assign ["x"] [ref "x" -. i 1], assume $ i 0 <. ref "x", assign ["x"] [ref "x" -. i 1], assume $ neg $ i 0 <. ref "x", assign ["y"] [ref "x"], assert $ ref "y" ==. i 0]
+            [assume $ i (-1) <=. ref "x", assume $ neg $ i 0 <. ref "x", assignN ["y"] [ref "x"], assert $ ref "y" ==. i 0],
+            [assume $ i (-1) <=. ref "x", assume $ i 0 <. ref "x", assignN ["x"] [ref "x" -. i 1], assume $ neg $ i 0 <. ref "x", assignN ["y"] [ref "x"], assert $ ref "y" ==. i 0],
+            [assume $ i (-1) <=. ref "x", assume $ i 0 <. ref "x", assignN ["x"] [ref "x" -. i 1], assume $ i 0 <. ref "x", assignN ["x"] [ref "x" -. i 1], assume $ neg $ i 0 <. ref "x", assignN ["y"] [ref "x"], assert $ ref "y" ==. i 0]
         ]
 
 prop_exampleProgramIsWrong :: Property
@@ -124,13 +124,33 @@ prop_exampleProgramIsWrong = expectFailure $ conjoin $ map (testPredicate . wlpP
 exampleProgramFixed :: Program
 exampleProgramFixed = program [("x", int)] [("y", int)] [
         assume $ i 0 <=. ref "x",
-        while (i 0 <. ref "x") [ assign ["x"] [ref "x" -. i 1]],
-        assign ["y"] [ref "x"],
+        while (i 0 <. ref "x") [ assignN ["x"] [ref "x" -. i 1]],
+        assignN ["y"] [ref "x"],
         assert $ ref "y" ==. i 0
     ]
 
 prop_exampleProgramIsFixed :: Property
 prop_exampleProgramIsFixed = conjoin $ map (testPredicate . wlpPath) $ paths 7 exampleProgramFixed
+
+-- |The minind program from assignment 1
+minind :: Program
+minind = program [("a", Array IntType), ("i", int), ("N", int)] [("r", int)] [
+        assume $ ref "N" >. ref "i",
+        var [("min", int)] [
+            assignN ["min", "r"] ["a" !!. ref "i", ref "i"],
+            while (ref "i" <. ref "N") [
+                if_ (("a" !!. ref "i") <. ref "min") [
+                    assignN ["min", "r"] ["a" !!. ref "i", ref "i"]
+                ] []
+            ]
+        ],
+        assert $ forall "j" int (("a" !!. ref "j") <=. ("a" !!. ref "r"))
+    ]
+
+{- -- enable only when you've implemented forall and/or fixed testcase printing
+prop_minindWorks :: Property
+prop_minindWorks = conjoin $ map (testPredicate . wlpPath) $ paths 10 minind
+-}
 
 -- Evil QuickCheck TemplateHaskell hackery
 return []

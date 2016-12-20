@@ -10,6 +10,9 @@ import qualified Data.Set as Set
 -- |Of course, there are expressions that aren't predicates but we're all very smart people so that won't happen.
 type Predicate = Expression
 
+-- |Map variables and array indices to the range of values they can take.
+type AssignMap = Map.Map AsgTarget Range
+
 -- |We want to exclude trivially true predicates when we want to check them.
 -- However, this is not as easy as it sounds: when we're testing an implication,
 -- we want the hypothesis to not be trivially *false*. Therefore, we make two
@@ -23,6 +26,7 @@ nonTrivTrue (Operated Implies p q) = nonTrivFalse p `intersectRanges` nonTrivTru
 nonTrivTrue (Operated Wedge p q) = nonTrivTrue p `unionRanges` nonTrivTrue q
 nonTrivTrue (Operated Vee p q) = nonTrivTrue p `intersectRanges` nonTrivTrue q
 nonTrivTrue (Operated _ _ _) = Map.empty -- We could go deeper but let's use the default.
+nonTrivTrue _ = Map.empty -- TODO: find some other cases to cover
 
 -- |Find a range for the variables that excludes assignments that make it trivially false.
 -- See 'nonTrivTrue' for the reasoning.
@@ -45,6 +49,7 @@ nonTrivFalse (Operated Equal (LiteralExpr (LiteralInt i)) (NameExpr n))
 nonTrivFalse (Operated Equal (NameExpr n) (LiteralExpr (LiteralInt i)))
     = Map.singleton n $ bounded i i
 nonTrivFalse (Operated _ _ _) = Map.empty -- We could go deeper but let's use the default.
+nonTrivFalse _ = Map.empty -- TODO: find some other cases to cover
 
 -- |Give infinite range to free variables without a range
 -- We need a type to handle the case where the expression is a single name
@@ -58,6 +63,7 @@ fullRange ty expr = fullRangeFor <$> typeInferExpr ty expr
     fullRangeFor :: Type -> Range
     fullRangeFor (Primitive BoolType) = RangeBool $ Set.fromList [True, False]
     fullRangeFor (Primitive IntType) = RangeInt [(MinInfinite, MaxInfinite)]
+    fullRangeFor (Array prim) = RangeArray $ fullRangeFor (Primitive prim)
 
 -- |Normalize a predicate to eliminate various implications and trivial truths.
 -- This isn't a full reduction but should get us far enough to generate test cases.

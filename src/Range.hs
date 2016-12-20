@@ -5,6 +5,7 @@ import qualified Data.Set as Set
 
 data Range = RangeInt IntRange
            | RangeBool BoolRange
+           | RangeArray Range
     deriving (Show)
 
 data MyInt = Bounded Int

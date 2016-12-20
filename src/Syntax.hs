@@ -19,8 +19,16 @@ data Variable = Variable Name Type
 type BoundVariable = Variable
 -- |Names of variables to be assigned to.
 type AsgTargets = [AsgTarget]
--- |Name of variable to be assigned to.
-type AsgTarget = Name
+-- |Variable to be assigned to, or as C calls it, an lvalue.
+-- Can also be an array with index.
+data AsgTarget
+    = NameTarget Name
+    | ArrTarget Name Expression
+    deriving (Eq, Ord, Show)
+isNameTarget :: AsgTarget -> Bool
+isNameTarget (NameTarget _) = True
+isNameTarget _ = False
+
 -- |Several expressions to be evaluated.
 type Expressions = [Expression]
 -- |Binary operators used in an 'Expression'.
@@ -60,10 +68,12 @@ data PrimitiveType
 data Literal
     = LiteralInt Int
     | LiteralBool Bool
+    | LiteralArray [Literal]
     deriving (Eq, Ord)
 instance Show Literal where
     show (LiteralInt i) = show i
     show (LiteralBool b) = show b
+    show (LiteralArray arr) = show arr
 
 -- *Big syntax
 -- Pieces of syntax that are much more complicated structures of small syntax.
@@ -86,6 +96,10 @@ data Statement
         -- ^Weaken precondition
     | Assign AsgTargets Expressions
         -- ^Set variables to values
+        -- We support simultaneous assignment except the following cases:
+        -- * assignment to the same lvalue is sequenced in an arbitrary way
+        -- * assignment to a lvalue and to a subscript of this lvalue are
+        --    sequenced in an arbitrary way
     | Sequence Statement Statement
         -- ^Perform one statement, then another.
         -- We will usually express this using a list of 'Statements',
@@ -110,10 +124,14 @@ data Expression
     | Negation Expression
         -- ^Negation of a proposition.
         -- TODO: this feels too hard-coded compared to 'BinaryOp'.
-    | Index Name Expression
+    | Index Expression Expression
         -- ^Look up an index in an array.
     | Forall BoundVariable Expression
         -- ^Quantify a predicate over all values the variable can assume.
+    | Repby Expression Expression Expression
+        -- ^Used for translating array assignments.
+        -- Replace the value in `array` at index `index` with `expression`.
+        -- You shouldn't write this expression in an actual program!
     deriving (Eq, Ord)
 
 instance Show Expression where
@@ -121,8 +139,9 @@ instance Show Expression where
     show (NameExpr n) = n
     show (Operated op ex1 ex2) = "(" ++ show ex1 ++ " " ++ show op ++ " " ++ show ex2 ++ ")"
     show (Negation expr) = "~(" ++ show expr ++ ")"
-    show (Index var expr) = var ++ "[" ++ show expr ++ "]"
+    show (Index arr expr) = "(" ++ show arr ++ ")[" ++ show expr ++ "]"
     show (Forall var expr) = "(forall " ++ show var ++ " . " ++ show expr ++ ")"
+    show (Repby var index expr) = "(" ++ show var ++ "[" ++ show index ++ "]" ++ show expr ++ ")"
 
 -- *Building an AST
 -- The data types defined above are quite impractical, so let's make them easier to read.
@@ -162,8 +181,8 @@ assert = Assert
 assume = Assume
 -- |A datatype-agnostic way to write the constructor.
 -- Does not check the number of variables versus expressions.
-assign :: [Name] -> [Expression] -> Statement
-assign = Assign
+assignN :: [Name] -> [Expression] -> Statement
+assignN = Assign . map NameTarget
 -- |A datatype-agnostic way to write the constructor.
 if_ :: Expression -> [Statement] -> [Statement] -> Statement
 if_ cond thens elses = If cond (foldSequence thens) (foldSequence elses)
@@ -203,7 +222,7 @@ neg :: Expression -> Expression
 neg = Negation
 -- |Array indexing.
 (!!.) :: Name -> Expression -> Expression
-(!!.) = Index
+(!!.) = Index . ref
 -- |A quantifier.
 forall, exists :: Name -> Type -> Expression -> Expression
 forall = Forall ... Variable
@@ -215,10 +234,6 @@ int = Primitive IntType
 bool = Primitive BoolType
 ints = Array IntType
 bools = Array BoolType
-
--- |Remove type specifier from variable declaration.
-toName :: Variable -> Name
-toName (Variable name _) = name
 
 -- |Get the return type and argument types to the operator, for type checking.
 operatorType :: BinaryOp -> (Type, Type, Type)
