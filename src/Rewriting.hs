@@ -8,57 +8,6 @@ import qualified Data.Set as Set
 
 import Syntax
 
--- |Replace the variable if it occurs in the map, keep it the same otherwise
-replaceVar :: Name -> Map.Map Name Expression -> Expression
-replaceVar name substs = fromMaybe (NameExpr name) (Map.lookup name substs)
-
--- |Replace all occurrences of given free variables by the given expressions.
--- Will also nicely handle the case of simultaneous substitutions.
-replaceVars :: Expression -> Map.Map Name Expression -> Expression
-replaceVars (LiteralExpr l) _ = LiteralExpr l
-replaceVars (NameExpr name) substs = replaceVar name substs
-replaceVars (Operated op left right) substs = Operated op left' right'
-    where
-    left' = replaceVars left substs
-    right' = replaceVars right substs
-replaceVars (Negation e) substs = Negation $ replaceVars e substs
-replaceVars (Index name e) substs = Index name $ replaceVars e substs
-replaceVars f@(Forall v@(Variable name _) e) substs = Forall v $ replaceVars e substs'
-    where
-    substs' = Map.delete name substs
-
--- |Replace all occurrences of given free variables by the given expressions.
--- Will also nicely handle the case of simultaneous substitutions.
-replaceVarsStmt :: Statement -> Map.Map Name Expression -> Statement
-replaceVarsStmt Skip _ = Skip
-replaceVarsStmt (Assert expr) substs = Assert $ replaceVars expr substs
-replaceVarsStmt (Assume expr) substs = Assume $ replaceVars expr substs
-replaceVarsStmt (Assign vars exprs) substs = Assign replacedVars replacedExprs
-    where
-    replacedVars :: [AsgTarget]
-    replacedVars = map (`replaceVar'` substs) (map toName vars)
-    replaceVar' :: Name -> Map.Map Name Expression -> AsgTarget
-    replaceVar' name substs = case replaceVar name substs of
-        NameExpr result -> NameTarget result
-    replacedExprs :: [Expression]
-    replacedExprs = map (`replaceVars` substs) exprs
-replaceVarsStmt (Sequence stmt1 stmt2) substs = Sequence stmt1' stmt2'
-    where
-    stmt1' = replaceVarsStmt stmt1 substs
-    stmt2' = replaceVarsStmt stmt2 substs
-replaceVarsStmt (If cond stmt1 stmt2) substs = If cond' stmt1' stmt2'
-    where
-    cond' = replaceVars cond substs
-    stmt1' = replaceVarsStmt stmt1 substs
-    stmt2' = replaceVarsStmt stmt2 substs
-replaceVarsStmt (While cond stmt) substs = While cond' stmt'
-    where
-    cond' = replaceVars cond substs
-    stmt' = replaceVarsStmt stmt substs
-replaceVarsStmt (Var vars stmt) substs = Var vars $ replaceVarsStmt stmt substs'
-    where
-    substs' = foldr (Map.delete . toName) substs vars
-
 -- |So the AsgTarget and Variable and Name types aren't too cumbersome.
 class Bindable var where
     toName :: var -> Name
@@ -81,25 +30,100 @@ sameName v w = toName v == toName w
 makeBound :: Bindable var => var -> Set.Set AsgTarget -> Set.Set AsgTarget
 makeBound bound = Set.filter (not . sameName bound)
 
--- |Determine all free variables of the statement
-freeVarsStmt :: Statement -> Set.Set AsgTarget
-freeVarsStmt Skip = Set.empty
-freeVarsStmt (Assert expr) = freeVarsExpr expr
-freeVarsStmt (Assume expr) = freeVarsExpr expr
-freeVarsStmt (Assign vars exprs) = Set.fromList vars `Set.union` concatMapSet freeVarsExpr exprs
-    where
-    -- |Equivalent to concatMap but makes a set instead of a list.
-    concatMapSet :: Ord b => (a -> Set.Set b) -> [a] -> Set.Set b
-    concatMapSet f = foldr (Set.union . f) Set.empty
-freeVarsStmt (Sequence stmt1 stmt2) = freeVarsStmt stmt1 `Set.union` freeVarsStmt stmt2
-freeVarsStmt (If cond stmt1 stmt2) = freeVarsExpr cond `Set.union` freeVarsStmt stmt1 `Set.union` freeVarsStmt stmt2
-freeVarsStmt (While cond stmt) = freeVarsExpr cond `Set.union` freeVarsStmt stmt
-freeVarsStmt (Var excluded stmt) = Set.filter isStillFree $ freeVarsStmt stmt
-    where
-    -- |Is the target declared in this scope?
-    isStillFree :: AsgTarget -> Bool
-    isStillFree (NameTarget name) = all (not . sameName name) excluded
-    isStillFree (ArrTarget name _) = all (not . sameName name) excluded
+-- |We will need to operate on the free variables quite a bit,
+-- both on statements and on expressions.
+-- To avoid replaceExpr, replaceStmt, etc. we made it a typeclass.
+class FreeVars syntax where
+    -- |Give a set of any free variables in this piece of syntax.
+    freeVars :: syntax -> Set.Set AsgTarget
+    -- |Replace any free variables in the map with the given expression.
+    -- TODO: make this take Map.Map AsgTarget Expression?
+    replace :: syntax -> Map.Map Name Expression -> syntax
+    -- |Give new names to all free variables in the syntax that match the exclusion list.
+    refresh :: Set.Set Name -> syntax -> syntax
+    refresh exclude expr = replace expr freeToFresh
+        where
+        shouldRefresh :: Name -> Bool
+        shouldRefresh name = anySameName name oldVars || anySameName name exclude
+        anySameName :: (Bindable v, Bindable w) => v -> Set.Set w -> Bool
+        anySameName v = Set.fold (\w -> (|| sameName v w)) False
+        oldVars = Set.map toName $ freeVars expr
+        newVars = filter (not . shouldRefresh) ["x" ++ show n | n <- [1..]]
+        freeToFresh = Map.fromList $ zip (Set.toList oldVars) $ map ref newVars
+
+-- |Replace the variable if it occurs in the map, keep it the same otherwise.
+-- Note that this isn't an instance of Replacable since we get an Expression.
+replaceVar :: Name -> Map.Map Name Expression -> Expression
+replaceVar name substs = fromMaybe (NameExpr name) (Map.lookup name substs)
+
+instance FreeVars Expression where
+    freeVars (LiteralExpr _) = Set.empty
+    freeVars (NameExpr name) = Set.singleton $ NameTarget name
+    freeVars (Operated _ expr1 expr2) = freeVars expr1 `Set.union` freeVars expr2
+    freeVars (Negation expr) = freeVars expr
+    freeVars (Index arr expr) = freeVars arr `Set.union` freeVars expr
+    freeVars (Forall var expr) = makeBound var $ freeVars expr
+
+    replace (LiteralExpr l) _ = LiteralExpr l
+    replace (NameExpr name) substs = replaceVar name substs
+    replace (Operated op left right) substs = Operated op left' right'
+        where
+        left' = replace left substs
+        right' = replace right substs
+    replace (Negation e) substs = Negation $ replace e substs
+    replace (Index name e) substs = Index name $ replace e substs
+    replace f@(Forall v@(Variable name _) e) substs = Forall v $ replace e substs'
+        where
+        substs' = Map.delete name substs
+
+instance FreeVars Statement where
+    -- |Determine all free variables of the statement
+    freeVars Skip = Set.empty
+    freeVars (Assert expr) = freeVars expr
+    freeVars (Assume expr) = freeVars expr
+    freeVars (Assign vars exprs) = Set.fromList vars `Set.union` concatMapSet freeVars exprs
+        where
+        -- |Equivalent to concatMap but makes a set instead of a list.
+        concatMapSet :: Ord b => (a -> Set.Set b) -> [a] -> Set.Set b
+        concatMapSet f = foldr (Set.union . f) Set.empty
+    freeVars (Sequence stmt1 stmt2) = freeVars stmt1 `Set.union` freeVars stmt2
+    freeVars (If cond stmt1 stmt2) = freeVars cond `Set.union` freeVars stmt1 `Set.union` freeVars stmt2
+    freeVars (While cond stmt) = freeVars cond `Set.union` freeVars stmt
+    freeVars (Var excluded stmt) = Set.filter isStillFree $ freeVars stmt
+        where
+        -- |Is the target declared in this scope?
+        isStillFree :: AsgTarget -> Bool
+        isStillFree (NameTarget name) = all (not . sameName name) excluded
+        isStillFree (ArrTarget name _) = all (not . sameName name) excluded
+
+    replace Skip _ = Skip
+    replace (Assert expr) substs = Assert $ replace expr substs
+    replace (Assume expr) substs = Assume $ replace expr substs
+    replace (Assign vars exprs) substs = Assign replacedVars replacedExprs
+        where
+        replacedVars :: [AsgTarget]
+        replacedVars = map (`replaceVar'` substs) (map toName vars)
+        replaceVar' :: Name -> Map.Map Name Expression -> AsgTarget
+        replaceVar' name substs = case replaceVar name substs of
+            NameExpr result -> NameTarget result
+        replacedExprs :: [Expression]
+        replacedExprs = map (`replace` substs) exprs
+    replace (Sequence stmt1 stmt2) substs = Sequence stmt1' stmt2'
+        where
+        stmt1' = replace stmt1 substs
+        stmt2' = replace stmt2 substs
+    replace (If cond stmt1 stmt2) substs = If cond' stmt1' stmt2'
+        where
+        cond' = replace cond substs
+        stmt1' = replace stmt1 substs
+        stmt2' = replace stmt2 substs
+    replace (While cond stmt) substs = While cond' stmt'
+        where
+        cond' = replace cond substs
+        stmt' = replace stmt substs
+    replace (Var vars stmt) substs = Var vars $ replace stmt substs'
+        where
+        substs' = foldr (Map.delete . toName) substs vars
 
 -- |Infer the type of all free variables in the expression.
 -- We need to know the type the expression returns to handle the case of NameExpr.
@@ -121,20 +145,3 @@ typeInferExpr return (Operated op expr1 expr2) = left `Map.union` right
     (expectedReturn, expectedLeft, expectedRight) = operatorType op
     left = typeInferExpr expectedLeft expr1
     right = typeInferExpr expectedRight expr2
-
--- |Determine all free variables of the expression.
--- This is more general than keysSet . typeInferExpr because we also accept untyped expressions.
-freeVarsExpr :: Expression -> Set.Set AsgTarget
-freeVarsExpr (LiteralExpr _) = Set.empty
-freeVarsExpr (NameExpr name) = Set.singleton $ NameTarget name
-freeVarsExpr (Operated _ expr1 expr2) = freeVarsExpr expr1 `Set.union` freeVarsExpr expr2
-freeVarsExpr (Negation expr) = freeVarsExpr expr
-freeVarsExpr (Index arr expr) = freeVarsExpr arr `Set.union` freeVarsExpr expr
-freeVarsExpr (Forall var expr) = makeBound var $ freeVarsExpr expr
-
--- |Replace all given variables so that they don't clash with the free variables
-refresh :: [Name] -> Set.Set Name -> Statement -> Statement
-refresh old exclude = flip replaceVarsStmt replacements
-    where
-    newVars = filter (not . (`Set.member` exclude)) ["x" ++ show n | n <- [1..]]
-    replacements = Map.fromList $ zip old $ map ref newVars

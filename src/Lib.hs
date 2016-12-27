@@ -23,7 +23,7 @@ wlp' Skip q = q
 -- translating `a[i]=x` to `a = repby(a,i,e)` means we also have to make sure
 -- the assignments to a now occur sequentially, not simultaneously!
 -- (Which also means we can't just translate before calculating wlp)
-wlp' (Assign targets exprs) q = replaceVars q $ replacements $ zip targets exprs
+wlp' (Assign targets exprs) q = replace q $ replacements $ zip targets exprs
     where
     -- Recursively build the replacements so we can handle sequentiality.
     -- TODO: use some higher order functions to make it a bit more readable.
@@ -44,12 +44,10 @@ wlp' (Sequence stmt1 stmt2) q = wlp' stmt1 $ wlp' stmt2 q
 wlp' (Assert condition) q = condition /\. q
 wlp' (Assume condition) q = condition =>. q
 -- Local variables get renamed so they don't clash with those in the condition
-wlp' (Var vars stmt) q = wlp' (refresh names currentFree stmt) q
+wlp' (Var vars stmt) q = wlp' (refresh currentFree stmt) q
     where
     currentFree :: Set.Set Name
-    currentFree = Set.map toName $ freeVarsStmt stmt `Set.union` freeVarsExpr q
-    names :: [Name]
-    names = map toName vars
+    currentFree = Set.map toName $ freeVars stmt `Set.union` freeVars q
 wlp' stmt q = error $ "Statement " ++ show stmt ++ " has no wlp defined!"
 
 -- |Given a path consisting of elementary statements, compute the wlp of True.
