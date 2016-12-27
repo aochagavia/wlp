@@ -41,7 +41,7 @@ data BinaryOp
     | LessThan -- ^Strict inequality of two numbers.
     | LessEqual -- ^Loose inequality of two numbers.
     | Equal -- ^Equality of two numbers.
-    deriving (Eq, Ord)
+    deriving (Eq, Ord, Enum, Bounded)
 
 instance Show BinaryOp where
     show Plus = "+"
@@ -62,7 +62,7 @@ data Type
 data PrimitiveType
     = IntType -- ^Integer number.
     | BoolType -- ^Boolean proposition.
-    deriving (Eq, Ord, Show)
+    deriving (Eq, Ord, Show, Bounded, Enum)
 
 -- |A value of a PrimitiveType
 data Literal

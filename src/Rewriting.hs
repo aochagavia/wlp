@@ -48,8 +48,12 @@ class FreeVars syntax where
         anySameName :: (Bindable v, Bindable w) => v -> Set.Set w -> Bool
         anySameName v = Set.fold (\w -> (|| sameName v w)) False
         oldVars = Set.map toName $ freeVars expr
-        newVars = filter (not . shouldRefresh) ["x" ++ show n | n <- [1..]]
-        freeToFresh = Map.fromList $ zip (Set.toList oldVars) $ map ref newVars
+        newVars = ["x" ++ show n | n <- [1..]]
+        -- The bound variables to replace
+        toReplace = filter shouldRefresh $ Set.toList oldVars
+        -- Don't replace the variables with bound variables
+        replaceWith = map ref $ filter (not . shouldRefresh) newVars
+        freeToFresh = Map.fromList $ zip toReplace replaceWith
 
 -- |Replace the variable if it occurs in the map, keep it the same otherwise.
 -- Note that this isn't an instance of Replacable since we get an Expression.

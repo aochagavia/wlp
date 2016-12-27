@@ -1,6 +1,9 @@
 {-# LANGUAGE TemplateHaskell #-}
 
+import Control.Applicative
+
 import Lib
+import Predicate
 import Syntax
 
 import Test.QuickCheck
@@ -151,6 +154,71 @@ minind = program [("a", Array IntType), ("i", int), ("N", int)] [("r", int)] [
 prop_minindWorks :: Property
 prop_minindWorks = conjoin $ map (testPredicate . wlpPath) $ paths 10 minind
 -}
+
+-- |Represents parts of expressions that have an explicit type.
+class ArbitraryTyped a where
+    arbitraryTyped :: Type -> Gen a
+instance Arbitrary Type where
+    arbitrary = oneof
+        [ Primitive <$> arbitraryBoundedEnum
+        , Array <$> arbitraryBoundedEnum
+        ]
+-- Variables are not ArbitraryTyped since we can't use them in an expression.
+instance Arbitrary Variable where
+    arbitrary = Variable <$> arbitrary <*> arbitrary
+
+instance ArbitraryTyped Literal where
+    arbitraryTyped (Primitive IntType) = LiteralInt <$> arbitrary
+    arbitraryTyped (Primitive BoolType) = LiteralBool <$> arbitrary
+    arbitraryTyped (Array t) = LiteralArray <$> listOf (arbitraryTyped $ Primitive t)
+instance ArbitraryTyped BinaryOp where
+    arbitraryTyped (Primitive IntType) = elements [Plus, Minus]
+    arbitraryTyped (Primitive BoolType) = elements [Wedge, Vee, Implies, LessThan, LessEqual, Equal]
+
+instance ArbitraryTyped Expression where
+    arbitraryTyped t@(Primitive IntType) = sized $ \size -> if size <= 0
+        then LiteralExpr <$> arbitraryTyped t
+        else oneof
+            [ LiteralExpr <$> arbitraryTyped t
+            , NameExpr <$> arbitrary
+            , do
+                operator <- arbitraryTyped t
+                let (_, leftType, rightType) = operatorType operator
+                firstHalf <- choose (0, size)
+                Operated
+                    <$> pure operator
+                    <*> resize firstHalf (arbitraryTyped leftType)
+                    <*> resize (size - firstHalf) (arbitraryTyped rightType)
+            ]
+    -- TODO: merge this with the above somehow?
+    arbitraryTyped t@(Primitive BoolType) = sized $ \size -> if size <= 0
+        then LiteralExpr <$> arbitraryTyped t
+        else oneof
+            [ LiteralExpr <$> arbitraryTyped t
+            , NameExpr <$> arbitrary
+            , do
+                operator <- arbitraryTyped t
+                let (_, leftType, rightType) = operatorType operator
+                firstHalf <- choose (0, size)
+                Operated
+                    <$> pure operator
+                    <*> resize firstHalf (arbitraryTyped leftType)
+                    <*> resize (size - firstHalf) (arbitraryTyped rightType)
+            , Negation <$> resize (size-1) (arbitraryTyped bool)
+            , Forall <$> arbitrary <*> resize (size-1) (arbitraryTyped bool)
+            ]
+
+-- |Check that prenex normalization gives predicates in prenex form
+prop_prenexGivesPrenex :: Property
+prop_prenexGivesPrenex = forAll (arbitraryTyped bool) $
+        isPrenex' . prenex'
+    where
+    isPrenex' :: Predicate -> Bool
+    isPrenex' (LiteralExpr _) = True
+    isPrenex' (NameExpr _) = True
+    isPrenex' (Operated _ p q) = isQuantifierFree p && isQuantifierFree q
+    isPrenex' (Negation p) = isPrenex' p
+    isPrenex' (Forall _ p) = isPrenex' p
 
 -- Evil QuickCheck TemplateHaskell hackery
 return []
