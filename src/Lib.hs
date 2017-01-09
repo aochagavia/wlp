@@ -105,7 +105,18 @@ testPredicate pred' = checkCase
     checkCase =
         if any isEmpty ranges
         then property True -- If the conditions aren't met, we always succeed
-        else forAll instantiations $ literalToBool . fromRight . evaluateClosed pred
+        else counterexample (show pred') $ forAll instantiations runCase
+
+    runCase :: Map.Map AsgTarget Literal -> Bool
+    runCase = literalToBool . fromRight . evaluateClosed pred . literalize
+
+    -- Make sure any expressions in the AsgTarget get evaluated
+    literalize :: Map.Map AsgTarget Literal -> Map.Map AsgTarget Literal
+    literalize env = Map.mapKeys (evaluateAsg env) env
+    evaluateAsg :: Map.Map AsgTarget Literal -> AsgTarget -> AsgTarget
+    evaluateAsg env (NameTarget n) = NameTarget n
+    evaluateAsg env (ArrTarget arr index)
+        = ArrTarget arr $ LiteralExpr $ fromRight $ evaluateClosed index env
 
     instantiations :: Gen (Map.Map AsgTarget Literal)
     instantiations = mapM rangeToGen ranges
