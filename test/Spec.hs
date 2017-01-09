@@ -176,6 +176,35 @@ minindWrong = program [("a", Array IntType), ("i", int), ("N", int)] [("r", int)
 prop_minindIsWrong :: Property
 prop_minindIsWrong = expectFailure $ conjoin $ map (testPredicate . wlpPath) $ paths 10 minindWrong
 
+swap :: Program
+swap = program [("a", Array IntType), ("i", int), ("j", int)] [("a'", Array IntType)] [
+        assume $ (("a" !!. ref "i") ==. ref "x") /\. (("a" !!. ref "j") ==. ref "y"),
+        var [("tmp", int)] [
+            assignN ["tmp"] ["a" !!. ref "i"],
+            Assign [ArrTarget "a" (ref "i")] ["a" !!. ref "j"],
+            Assign [ArrTarget "a" (ref "j")] [ref "tmp"],
+            assignN ["a'"] [ref "a"]
+        ],
+        assert $ (("a'" !!. ref "j") ==. ref "x") /\. (("a'" !!. ref "i") ==. ref "y")
+    ]
+
+prop_swapWorks :: Property
+prop_swapWorks = conjoin $ map (testPredicate . wlpPath) $ paths 10 swap
+
+swapWrong :: Program
+swapWrong = program [("a", Array IntType), ("i", int), ("j", int)] [("a'", Array IntType)] [
+        assume $ (("a" !!. ref "i") ==. ref "x") /\. (("a" !!. ref "j") ==. ref "y"),
+        var [("tmp", int)] [
+            assignN ["tmp"] ["a" !!. ref "i"],
+            Assign [ArrTarget "a" (ref "i")] ["a" !!. ref "j"],
+            Assign [ArrTarget "a" (ref "j")] [ref "tmp"],
+            assignN ["a'"] [ref "a"]
+        ],
+        assert $ (("a'" !!. ref "i") ==. ref "x") /\. (("a'" !!. ref "j") ==. ref "y")
+    ]
+
+prop_swapIsWrong :: Property
+prop_swapIsWrong = expectFailure $ conjoin $ map (testPredicate . wlpPath) $ paths 10 swapWrong
 -- |Represents parts of expressions that have an explicit type.
 class ArbitraryTyped a where
     arbitraryTyped :: Type -> Gen a
