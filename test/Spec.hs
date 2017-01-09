@@ -146,16 +146,35 @@ minind = program [("a", Array IntType), ("i", int), ("N", int)] [("r", int)] [
             while (ref "i" <. ref "N") [
                 if_ (("a" !!. ref "i") <. ref "min") [
                     assignN ["min", "r"] ["a" !!. ref "i", ref "i"]
-                ] []
+                ] [],
+                assignN ["i"] [ref "i" +. i 1]
             ]
         ],
         assert $ forall "j" int (((ref "j" >=. ref "i") /\. (ref "r" <. ref "N")) =>.
             (("a" !!. ref "j") <=. ("a" !!. ref "r")))
     ]
 
--- enable only when you've implemented forall and/or fixed testcase printing
 prop_minindWorks :: Property
 prop_minindWorks = conjoin $ map (testPredicate . wlpPath) $ paths 10 minind
+
+-- |The minind program from assignment 1 with a broken postcondition
+minindWrong :: Program
+minindWrong = program [("a", Array IntType), ("i", int), ("N", int)] [("r", int)] [
+        assume $ ref "N" >. ref "i",
+        var [("min", int)] [
+            assignN ["min", "r"] ["a" !!. ref "i", ref "i"],
+            while (ref "i" <. ref "N") [
+                if_ (("a" !!. ref "i") <. ref "min") [
+                    assignN ["min", "r"] ["a" !!. ref "i", ref "i"]
+                ] [],
+                assignN ["i"] [ref "i" +. i 1]
+            ]
+        ],
+        assert $ forall "j" int (("a" !!. ref "j") <=. ("a" !!. ref "r"))
+    ]
+
+prop_minindIsWrong :: Property
+prop_minindIsWrong = expectFailure $ conjoin $ map (testPredicate . wlpPath) $ paths 10 minindWrong
 
 -- |Represents parts of expressions that have an explicit type.
 class ArbitraryTyped a where
