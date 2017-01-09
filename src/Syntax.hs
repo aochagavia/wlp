@@ -215,8 +215,8 @@ ref = NameExpr
 (<.) = Operated LessThan
 (<=.) = Operated LessEqual
 (==.) = Operated Equal
-(>.) = Negation ... Operated LessEqual
-(>=.) = Negation ... Operated LessThan
+e1 >. e2 = Operated LessThan e2 e1
+e1 >=. e2 = Operated LessEqual e2 e1
 (!=.) = Negation ... Operated Equal
 -- |A unary operator.
 neg :: Expression -> Expression
