@@ -79,7 +79,7 @@ prenex' = foldExpression (LiteralExpr, NameExpr, op, neg, Index, Forall)
     -- Replaces any free instances of the given variable
     -- Since we get a lot of double negations, eliminate them
     neg (Negation p) = p
-    neg p = p
+    neg p = Negation p
     -- Pull quantifiers outside of operators
     -- (∀p) /\ q === ∀(p /\ q) and symmetrically, and dually
     op Wedge (Forall var p) q = Forall var $ op Wedge p $ refresh' var q
