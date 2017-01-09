@@ -97,7 +97,7 @@ prenex' = foldExpression (LiteralExpr, NameExpr, op, neg, Index, Forall)
     op Vee q (Negation (Forall var p))
         = Negation $ Forall var $ op Wedge p $ neg $ refresh' var q
     -- (p => q) === (~p \/ q), combined with the rules above
-    op Implies (Forall var p) q = Negation $ Forall var $ neg $ op Implies p q
+    op Implies (Forall var p) q = Negation $ Forall var $ neg $ op Implies p (refresh' var q)
     op Implies q (Forall var p) = Forall var $ op Implies (refresh' var q) p
     op Implies (Negation (Forall var p)) q
         = Negation $ Forall var $ neg $ op Implies p $ refresh' var q
