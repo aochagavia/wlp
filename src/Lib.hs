@@ -48,7 +48,7 @@ wlp' (Assume condition) q = condition =>. q
 wlp' (Var vars stmt) q = wlp' (refresh currentFree stmt) q
     where
     currentFree :: Set.Set Name
-    currentFree = Set.map toName $ freeVars stmt `Set.union` freeVars q
+    currentFree = Set.fromList $ map toName vars
 wlp' stmt q = error $ "Statement " ++ show stmt ++ " has no wlp defined!"
 
 -- |Given a path consisting of elementary statements, compute the wlp of True.
