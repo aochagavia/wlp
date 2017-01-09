@@ -47,7 +47,7 @@ class FreeVars syntax where
     refresh exclude expr = replace expr freeToFresh
         where
         shouldRefresh :: Name -> Bool
-        shouldRefresh name = anySameName name oldVars || anySameName name exclude
+        shouldRefresh name = anySameName name exclude
         anySameName :: (Bindable v, Bindable w) => v -> Set.Set w -> Bool
         anySameName v = Set.fold (\w -> (|| sameName v w)) False
         oldVars = Set.map toName $ freeVars expr

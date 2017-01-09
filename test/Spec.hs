@@ -1,9 +1,11 @@
 {-# LANGUAGE TemplateHaskell #-}
 
 import Control.Applicative
+import qualified Data.Set as Set
 
 import Lib
 import Predicate
+import Rewriting
 import Syntax
 
 import Test.QuickCheck
@@ -147,7 +149,8 @@ minind = program [("a", Array IntType), ("i", int), ("N", int)] [("r", int)] [
                 ] []
             ]
         ],
-        assert $ forall "j" int (("a" !!. ref "j") <=. ("a" !!. ref "r"))
+        assert $ forall "j" int (((ref "j" >=. ref "i") /\. (ref "r" <. ref "N")) =>.
+            (("a" !!. ref "j") <=. ("a" !!. ref "r")))
     ]
 
 -- enable only when you've implemented forall and/or fixed testcase printing
@@ -225,6 +228,11 @@ prop_normalizeIsEquivalent = forAll (arbitraryTyped bool) doCheck
     where
     doCheck pred = isQuantifierFree pred ==> isEquivalent pred (normalize pred)
     isEquivalent p1 p2 = testPredicate ((p1 =>. p2) /\. (p2 =>. p1))
+
+-- |Refreshing should only refresh the given free variables
+prop_refreshKeepsVars :: Property
+prop_refreshKeepsVars = forAll (arbitraryTyped bool :: Gen Expression) $ (\expr ->
+        freeVars expr == freeVars (refresh Set.empty expr))
 
 -- Evil QuickCheck TemplateHaskell hackery
 return []
