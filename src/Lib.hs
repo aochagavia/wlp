@@ -7,6 +7,7 @@ import Rewriting
 import Syntax
 import Util
 
+import Control.Monad.State
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Test.QuickCheck
@@ -87,25 +88,34 @@ paths n (Program _ _ s) = map fst $ paths' n s
         (path, length) <- paths' n stmt
         return (Var vars path, length)
 
--- | Instantiate the free variables of a predicate and check that it holds.
+-- |Instantiate the free variables of a predicate and check that it holds.
 -- Uses 'Gen' to convert ranges of acceptable values to a single value.
 testPredicate :: Predicate -> Property
-testPredicate pred = forAll instantiations checkCase -- TODO: if instantiations contains an empty range, pass immediately
+testPredicate pred' = checkCase
     where
-    checkCase :: Map.Map Name Literal -> Bool
-    checkCase = literalToBool . evaluateClosed pred
+    -- Normalize the predicate so we don't test too complicated things
+    pred :: Predicate
+    pred = normalize pred'
 
-    instantiations :: Gen (Map.Map Name Literal)
-    instantiations = mapM rangeToGen $ defaultInfinite bool pred $ nonTrivTrue pred
+    fromRight :: Show l => Either l r -> r
+    fromRight (Left err) = error $ "Unexpected error " ++ show err
+    fromRight (Right a) = a
+
+    checkCase :: Property
+    checkCase =
+        if any isEmpty ranges
+        then property True -- If the conditions aren't met, we always succeed
+        else forAll instantiations $ literalToBool . fromRight . evaluateClosed pred
+
+    instantiations :: Gen (Map.Map AsgTarget Literal)
+    instantiations = mapM rangeToGen ranges
+    ranges :: Map.Map AsgTarget Range
+    ranges = defaultInfinite bool pred $ nonTrivTrue pred
 
     rangeToGen :: Range -> Gen Literal
     rangeToGen (RangeInt r) = LiteralInt <$> rangeToGenI r
     rangeToGen (RangeBool r) = LiteralBool <$> rangeToGenB r
-    -- Arrays are of arbitrary length, so let's make use of Haskell's laziness
-    rangeToGen arr@(RangeArray r) = do
-        first <- rangeToGen r
-        LiteralArray rest <- rangeToGen arr
-        return $ LiteralArray $ first : rest
+    rangeToGen (RangeArray r) = pure $ LiteralArray r
 
     rangeToGenI :: IntRange -> Gen Int
     rangeToGenI range = oneof $ map intervalToGenI range

@@ -32,25 +32,56 @@ foldExpression (literal, name, operated, negation, index, forall) = fold' where
     fold' (Index a e) = index (fold' a) (fold' e)
     fold' (Forall n e) = forall n (fold' e)
 
--- |Given values for all the free variables in the expression,
--- evaluate the expression to a single value.
-evaluateClosed :: Expression -> Map.Map Name Literal -> Literal
-evaluateClosed expr env = foldExpression closedAlgebra expr where
-    closedAlgebra :: ExpressionAlgebra Literal
-    closedAlgebra = (literal, name, operated, negation, index, forall)
-    literal l = l
-    name n = env Map.! n
-    operated Plus (LiteralInt n1) (LiteralInt n2) = LiteralInt $ n1 + n2
-    operated Minus (LiteralInt n1) (LiteralInt n2) = LiteralInt $ n1 - n2
-    operated Wedge (LiteralBool b1) (LiteralBool b2) = LiteralBool $ b1 && b2
-    operated Vee (LiteralBool b1) (LiteralBool b2) = LiteralBool $ b1 || b2
-    operated Implies (LiteralBool b1) (LiteralBool b2) = LiteralBool $ not b1 || b2
-    operated LessThan (LiteralInt n1) (LiteralInt n2) = LiteralBool $ n1 < n2
-    operated LessEqual (LiteralInt n1) (LiteralInt n2) = LiteralBool $ n1 <= n2
-    operated Equal (LiteralInt n1) (LiteralInt n2) = LiteralBool $ n1 == n2
-    operated op _ _ = error $ "TypeError: call to " ++ show op ++ " with wrong argument types"
-    negation (LiteralBool b1) = LiteralBool $ not b1
-    negation _ = error "TypeError: call to negation with wrong argument types"
-    index (LiteralArray arr) (LiteralInt index) = arr !! index
+-- |Evaluate the binary operation.
+-- Errors if the types of the arguments are wrong.
+operate :: BinaryOp -> Literal -> Literal -> Literal
+operate Plus (LiteralInt n1) (LiteralInt n2) = LiteralInt $ n1 + n2
+operate Minus (LiteralInt n1) (LiteralInt n2) = LiteralInt $ n1 - n2
+operate Wedge (LiteralBool b1) (LiteralBool b2) = LiteralBool $ b1 && b2
+operate Vee (LiteralBool b1) (LiteralBool b2) = LiteralBool $ b1 || b2
+operate Implies (LiteralBool b1) (LiteralBool b2) = LiteralBool $ not b1 || b2
+operate LessThan (LiteralInt n1) (LiteralInt n2) = LiteralBool $ n1 < n2
+operate LessEqual (LiteralInt n1) (LiteralInt n2) = LiteralBool $ n1 <= n2
+operate Equal (LiteralInt n1) (LiteralInt n2) = LiteralBool $ n1 == n2
+operate op _ _ = error $ "TypeError: call to " ++ show op ++ " with wrong argument types"
+
+-- |Given values for some of the free variables in the expression,
+-- evaluate the expression to a single value, or a free variable without value.
+evaluateClosed :: Expression -> Map.Map AsgTarget Literal -> Either AsgTarget Literal
+evaluateClosed expr env = fold' expr where
+    fold' (LiteralExpr l) = literal l
+    fold' (NameExpr n) = name n
+    fold' (Operated op e1 e2) = operated op (fold' e1) (fold' e2)
+    fold' (Negation e) = negation (fold' e)
+    fold' (Index a e) = index a (fold' e) -- Note that we do this differently!
+    fold' (Forall n e) = forall n (fold' e)
+    -- Look up the value for the variable, or indicate it's missing.
+    tryLookup :: AsgTarget -> Either AsgTarget Literal
+    tryLookup target = case Map.lookup target env of
+        Just literal -> Right literal
+        Nothing -> Left target
+    literal l = Right l
+    name n = tryLookup $ NameTarget n
+    operated op e1' e2' = do
+        -- Try to look up the values
+        e1 <- e1'
+        e2 <- e2'
+        return $ operate op e1 e2
+    negation :: Either AsgTarget Literal -> Either AsgTarget Literal
+    negation b' = do
+        b <- b'
+        case b of
+            LiteralBool b1 -> pure $ LiteralBool $ not $ b1
+            _ -> error "TypeError: call to negation with wrong argument types"
+    index :: Expression -> Either AsgTarget Literal -> Either AsgTarget Literal
+    index (Repby arrExpr repExpr asgExpr) i' = do
+        i <- i'
+        rep <- fold' repExpr
+        if i == rep
+        then fold' asgExpr
+        else index arrExpr i'
+    index (NameExpr name) i' = do
+        i <- i'
+        tryLookup $ ArrTarget name $ LiteralExpr i
     -- TODO: make this somewhat usable
     forall = error "Tautology of predicate logic is undecidable :("

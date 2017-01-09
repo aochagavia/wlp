@@ -29,6 +29,9 @@ sameName v w = toName v == toName w
 -- Basically filters out the AsgTargets with the given name.
 makeBound :: Bindable var => var -> Set.Set AsgTarget -> Set.Set AsgTarget
 makeBound bound = Set.filter (not . sameName bound)
+-- |Do the same as makeBound for a map instead of a set.
+makeBoundMap :: Bindable var => var -> Map.Map AsgTarget v -> Map.Map AsgTarget v
+makeBoundMap bound = Map.filterWithKey (const . not . sameName bound)
 
 -- |We will need to operate on the free variables quite a bit,
 -- both on statements and on expressions.
@@ -131,17 +134,20 @@ instance FreeVars Statement where
 
 -- |Infer the type of all free variables in the expression.
 -- We need to know the type the expression returns to handle the case of NameExpr.
-typeInferExpr :: Type -> Expression -> Map.Map Name Type
+typeInferExpr :: Type -> Expression -> Map.Map AsgTarget Type
 typeInferExpr return (LiteralExpr _) = Map.empty
-typeInferExpr return (NameExpr name) = Map.singleton name return
+typeInferExpr return (NameExpr name) = Map.singleton (NameTarget name) return
 typeInferExpr (Primitive BoolType) (Negation expr) = typeInferExpr bool expr
-typeInferExpr (Primitive prim) (Index arr index) = indexMap `Map.union` arrMap
+typeInferExpr (Primitive prim) (Index arr@(NameExpr arrName) index) = result
     where
+    result = Map.insert (ArrTarget arrName index) (Primitive prim) $
+        indexMap `Map.union` arrMap
     indexMap = typeInferExpr int index
+    -- We need to know that we want to index the array at a given point
     arrMap = typeInferExpr (Array prim) arr
 typeInferExpr (Primitive BoolType) (Forall (Variable name _) expr) = deleted
     where
-    deleted = name `Map.delete` typeInferExpr bool expr
+    deleted = makeBoundMap name $ typeInferExpr bool expr
 typeInferExpr return (Operated op expr1 expr2) = left `Map.union` right
     where
     -- Note that we ignore type checking for now.

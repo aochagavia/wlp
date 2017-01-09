@@ -6,10 +6,10 @@ import qualified Data.Set as Set
 data Range = RangeInt IntRange
            | RangeBool BoolRange
            | RangeArray Range
-    deriving (Show)
+    deriving (Eq, Ord, Show)
 
-data MyInt = Bounded Int
-           | MinInfinite
+data MyInt = MinInfinite
+           | Bounded Int
            | MaxInfinite
     deriving (Eq, Show)
 
@@ -34,6 +34,14 @@ increment :: MyInt -> MyInt
 increment (Bounded i) = Bounded $ i+1
 increment MaxInfinite = MaxInfinite
 increment MinInfinite = error "Minus infinity has no successor"
+
+-- |Is there no value in this range?
+isEmpty :: Range -> Bool
+isEmpty (RangeArray r) = isEmpty r
+isEmpty (RangeBool optionSet) = Set.null optionSet
+isEmpty (RangeInt intervals) = all intervalEmpty intervals
+    where
+    intervalEmpty (lower, upper) = lower > upper
 
 -- |Add an interval to the range, respecting the invariants.
 addToIntRange :: Interval -> IntRange -> IntRange

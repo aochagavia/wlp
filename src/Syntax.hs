@@ -1,5 +1,6 @@
 module Syntax where
 
+import Range
 import Util
 
 -- *Small syntax
@@ -68,12 +69,12 @@ data PrimitiveType
 data Literal
     = LiteralInt Int
     | LiteralBool Bool
-    | LiteralArray [Literal]
+    | LiteralArray Range
     deriving (Eq, Ord)
 instance Show Literal where
     show (LiteralInt i) = show i
     show (LiteralBool b) = show b
-    show (LiteralArray arr) = show arr
+    show (LiteralArray r) = "[" ++ show r ++ "]"
 
 -- *Big syntax
 -- Pieces of syntax that are much more complicated structures of small syntax.

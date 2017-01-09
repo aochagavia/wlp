@@ -150,10 +150,9 @@ minind = program [("a", Array IntType), ("i", int), ("N", int)] [("r", int)] [
         assert $ forall "j" int (("a" !!. ref "j") <=. ("a" !!. ref "r"))
     ]
 
-{- -- enable only when you've implemented forall and/or fixed testcase printing
+-- enable only when you've implemented forall and/or fixed testcase printing
 prop_minindWorks :: Property
 prop_minindWorks = conjoin $ map (testPredicate . wlpPath) $ paths 10 minind
--}
 
 -- |Represents parts of expressions that have an explicit type.
 class ArbitraryTyped a where
@@ -170,7 +169,7 @@ instance Arbitrary Variable where
 instance ArbitraryTyped Literal where
     arbitraryTyped (Primitive IntType) = LiteralInt <$> arbitrary
     arbitraryTyped (Primitive BoolType) = LiteralBool <$> arbitrary
-    arbitraryTyped (Array t) = LiteralArray <$> listOf (arbitraryTyped $ Primitive t)
+    arbitraryTyped (Array t) = pure $ LiteralArray $ fullRangeFor $ Primitive t
 instance ArbitraryTyped BinaryOp where
     arbitraryTyped (Primitive IntType) = elements [Plus, Minus]
     arbitraryTyped (Primitive BoolType) = elements [Wedge, Vee, Implies, LessThan, LessEqual, Equal]
@@ -219,6 +218,13 @@ prop_prenexGivesPrenex = forAll (arbitraryTyped bool) $
     isPrenex' (Operated _ p q) = isQuantifierFree p && isQuantifierFree q
     isPrenex' (Negation p) = isPrenex' p
     isPrenex' (Forall _ p) = isPrenex' p
+
+-- |Check that normalization doesn't break predicates
+prop_normalizeIsEquivalent :: Property
+prop_normalizeIsEquivalent = forAll (arbitraryTyped bool) doCheck
+    where
+    doCheck pred = isQuantifierFree pred ==> isEquivalent pred (normalize pred)
+    isEquivalent p1 p2 = testPredicate ((p1 =>. p2) /\. (p2 =>. p1))
 
 -- Evil QuickCheck TemplateHaskell hackery
 return []
