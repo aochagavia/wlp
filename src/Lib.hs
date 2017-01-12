@@ -84,7 +84,7 @@ paths n (Program _ _ s) = map fst $ paths' n s
         breakPath = (assume $ neg cond, 0)
         makeContinuePath (path, length) = (assume cond `Sequence` path, length + 1)
         continuePaths = makeContinuePath <$> paths' (n-1) (body `Sequence` s)
-    paths' n s@(Var vars stmt) = do
+    paths' n (Var vars stmt) = do
         (path, length) <- paths' n stmt
         return (Var vars path, length)
 

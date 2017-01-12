@@ -5,6 +5,9 @@
 \usepackage{polyglossia}
 \setdefaultlanguage{english}
 
+% Command to typeset ++
+\newcommand\mdoubleplus{\ensuremath{\mathbin{+\mkern-5mu+}}}
+
 \author{
   Tim Baanen\\4134524
   \and
@@ -20,8 +23,8 @@
 
 Even after decades of software verification research, there are still serious
 limitations to automated formal verification methods \cite{d2008survey}. A
-possible alternative to these methods is automated testing, which usually
-offers better scalability by trading off correctness.
+possible alternative to these methods is automated testing, which in some cases
+offers better scalability by renouncing to completeness.
 
 Within the field of automated software testing, different approaches have been
 tried. A relatively recent overview of the current state of affairs is
@@ -30,7 +33,8 @@ the problem of automated generation and running of test cases based on the
 model of programs. Said models not only reflect the behavior of a given
 program, but also provide assumptions and assertions that should be respected.
 
-% Other examples of automated testing: fuzzers (American Fuzzy Lop) \cite{takanen2008fuzzing}, or even QuickCheck to some extent
+% Other examples of automated testing: fuzzers (American Fuzzy Lop) \cite{takanen2008fuzzing},
+% or even QuickCheck to some extent
 
 \section{The Verificaction Tool}
 
@@ -39,20 +43,99 @@ variant of Dijkstra's Guarded Command Language (GCL) \cite{Dijkstra:gcl}.
 The language supports assertions, which are treated as postconditions,
 and assumptions, treated as preconditions.
 
+Based on the GCL model of a program, our tool performs the following steps:
+
+\begin{enumerate}
+\item Calculate the possible execution paths up to a given length.
+\item For each path, calculate the WLP of True, taking assumptions and assertions into account.
+\item For each WLP, calculate a QuickCheck \cite{claessen2011quickcheck} \texttt{Property}.
+\item For each \texttt{Property}, feed it to QuickCheck so it can be tested.
+\end{enumerate}
+
+The subsections below explain in detail each of the previous steps.
+
+\subsection{Calculating execution paths}
+
+Since our modeling language supports control flow constructs, a program may have
+multiple execution paths depending on the initial values of the variables and
+parameters. Furthermore, programs may loop infinitely and therefore can be traversed
+by execution paths of infinite length. Given the undecidability of the halting
+problem, we introduce an artificial length limit that a path is not allowed to exceed.
+
+When calculating execution paths, we insert \texttt{assume} and \texttt{assert}
+statements in order to drive the WLP calculation later on. Since they are not
+really part of the execution path, they are ignored when determining its length.
+
+Some constructs of the language are unrelated to control flow and therefore have
+a trivial implementation of the $path$ function. It is the case of \texttt{Skip},
+\texttt{Assert}, \texttt{Assume} and \texttt{Assign}. Other constructs, however,
+affect control flow or at least contain other constructs that do. Below is a
+description of how they are handled:
+
+\subsubsection*{Variable declaration}
+
+According to the grammar of GCL, variable declaration is always followed by a
+statement. Therefore, we need to calculate the execution paths for the given
+statement and append the variable declaration to each of them.
+
+\subsubsection*{Sequence}
+
+\texttt{Sequence} combines two statements in such a way that one is executed
+after the other. Let $firstPaths$ be the set of possible execution paths for
+the first statement and $lastPaths$ those for the second statement. Then, the
+possible execution paths for \texttt{Sequence} are defined as:
+
+\[ Paths(Sequence) = \{ p_1 \mdoubleplus p_2 | p_1 \in firstPaths, p_2 \in lastPaths\} \]
+
+\subsubsection*{If-then-else}
+
+The if-then-else statement contains two statements, one for the \texttt{then} branch
+and one for the \texttt{else} branch. Since only one of them will be executed
+when the program is run, the paths for if-then-else are defined as:
+
+\[ Paths(IfThenElse) = Paths(then) \cup Paths(else) \]
+
+% The paragraph below refers to an implementation detail. Should we include it
+% or leave it? I already say in the beginning of the subsection that we introduce
+% assumes and asserts to drive the WLP calculation later on. Conceptually, they don't
+% seem to be part of the path.
+%
+% Note, however, that we need to prepend an assumption of the if condition for each
+% path in the \texttt{then} branch, and a negation thereof for each path in the
+% \texttt{else} branch. This is necessary to drive the WLP calculation later on.
+
+\subsubsection*{While}
+
+When calculating the paths in a while we assume that the condition is true
+after each iteration. By doing this, we can obtain the paths in the body and
+unroll the loop as much as possible:
+
+\[ Paths(While) = \{ p_{body} \mdoubleplus p_{while} | p_{body} \in Paths(body), p_{while} \in Paths(While)\} \]
+
+Of course, in our code we add a path length limit in order to prevent generation
+of infinite paths. We also add a path in which the condition is untrue. In that
+case, the body of the while is not executed so the path is empty.
+
+% Question: wouldn't it be more correct to do finite unfolding as explained in the lectures?
+% Currently we are assuming that the condition holds after each iteration, which is not realistic
+
+\subsection{Calculating WLP}
+
+
+
 By using the Weakest Liberal Precondition predicate transformer (WLP), our
 tool initially generates a first order logic expression. Afterwards, the tool
 tries to ensure that said expression is always true, which means that the
 postconditions in the model follow from the stated preconditions. Below we
 discuss both.
 
-\subsection{WLP difficulties and edge cases}
-
 TODO: Explain why it is not that trivial...
 
-\subsection{Generating test cases based on the WLP}
+\subsection{Calculating properties}
 
-Random test generation and running is achieved by using QuickCheck \cite{claessen2011quickcheck}
-with custom generators.
+\subsection{Feeding to QuickCheck}
+
+Trivial?
 
 \section{Results}
 
