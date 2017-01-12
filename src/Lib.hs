@@ -38,9 +38,6 @@ wlp' (Assign targets exprs) q = replace q $ replacements $ zip targets exprs
             Nothing -> Map.insert name (Repby (ref name) index val) result
             -- The array is initialized
             Just arr -> Map.insert name (Repby arr index val) result
-    -- All the replacements in the assignment.
-    assignMap :: Map.Map AsgTarget Expression
-    assignMap = Map.fromList $ zip targets exprs
 wlp' (Sequence stmt1 stmt2) q = wlp' stmt1 $ wlp' stmt2 q
 wlp' (Assert condition) q = condition /\. q
 wlp' (Assume condition) q = condition =>. q
@@ -49,6 +46,8 @@ wlp' (Var vars stmt) q = wlp' (refresh currentFree stmt) q
     where
     currentFree :: Set.Set Name
     currentFree = Set.fromList $ map toName vars
+-- Note that we don't expect while or if statements to be present in the path,
+-- since they have just been desugared
 wlp' stmt q = error $ "Statement " ++ show stmt ++ " has no wlp defined!"
 
 -- |Given a path consisting of elementary statements, compute the wlp of True.
@@ -97,10 +96,6 @@ testPredicate pred' = checkCase
     pred :: Predicate
     pred = normalize pred'
 
-    fromRight :: Show l => Either l r -> r
-    fromRight (Left err) = error $ "Unexpected error " ++ show err
-    fromRight (Right a) = a
-
     checkCase :: Property
     checkCase =
         if any isEmpty ranges
@@ -140,6 +135,3 @@ testPredicate pred' = checkCase
     intervalToGenI (Bounded lower, Bounded upper) = elements [lower .. upper]
     rangeToGenB :: BoolRange -> Gen Bool
     rangeToGenB = elements . Set.toList
-
-someFunc :: IO ()
-someFunc = putStrLn "someFunc"

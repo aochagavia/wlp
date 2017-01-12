@@ -46,10 +46,14 @@ and assumptions, treated as preconditions.
 Based on the GCL model of a program, our tool performs the following steps:
 
 \begin{enumerate}
-\item Calculate the possible execution paths up to a given length.
-\item For each path, calculate the WLP of True, taking assumptions and assertions into account.
-\item For each WLP, calculate a QuickCheck \cite{claessen2011quickcheck} \texttt{Property}.
-\item For each \texttt{Property}, feed it to QuickCheck so it can be tested.
+\item Calculate the possible execution paths up to a given length (performed by
+the \texttt{path} function in \texttt{Lib.hs}).
+\item For each path, calculate the WLP taking assumptions and assertions into account
+(performed by the \texttt{wlp}, \texttt{wlp'} and \texttt{wlpPath} functions in \texttt{Lib.hs}).
+\item For each WLP, calculate a QuickCheck \cite{claessen2011quickcheck} \texttt{Property}
+(performed by the \texttt{testPredicate} function in \texttt{Lib.hs}).
+\item For each \texttt{Property}, feed it to QuickCheck so it can be tested (see
+\texttt{Spec.hs} for examples).
 \end{enumerate}
 
 The subsections below explain in detail each of the previous steps.
@@ -113,25 +117,46 @@ unroll the loop as much as possible:
 \[ Paths(While) = \{ p_{body} \mdoubleplus p_{while} | p_{body} \in Paths(body), p_{while} \in Paths(While)\} \]
 
 Of course, in our code we add a path length limit in order to prevent generation
-of infinite paths. We also add a path in which the condition is untrue. In that
+of infinite paths. We also add a path in which the condition is false. In that
 case, the body of the while is not executed so the path is empty.
 
-% Question: wouldn't it be more correct to do finite unfolding as explained in the lectures?
-% Currently we are assuming that the condition holds after each iteration, which is not realistic
+FIXME: wouldn't it be more correct to do finite unfolding as explained in the lectures?
+Currently we are assuming that the condition holds after each iteration, which is not realistic
 
 \subsection{Calculating WLP}
 
+The implementation of WLP for \texttt{Skip}, \texttt{Sequence}, \texttt{Assume}
+and \texttt{Assert} is either trivial or recursively defined. However, the
+implementations for \texttt{Assign} and \texttt{Var} are less straightforward.
 
+\subsubsection*{Var}
 
-By using the Weakest Liberal Precondition predicate transformer (WLP), our
-tool initially generates a first order logic expression. Afterwards, the tool
-tries to ensure that said expression is always true, which means that the
-postconditions in the model follow from the stated preconditions. Below we
-discuss both.
+The WLP of a \texttt{Var} statement is equivalent to the WLP of its inner statement.
+This seems trivial at first, but we need to consider the fact that the declared
+variables may be shadowing already existing names. In order to avoid that, we
+rename all declared variables that shadow existing names in such a way that they get
+a unique one. This is done by the \texttt{refresh} function (defined in \texttt{Rewriting.hs}).
 
-TODO: Explain why it is not that trivial...
+% Idea: write an appendix telling more about how refresh works?
 
-\subsection{Calculating properties}
+\subsubsection*{Assign}
+
+The WLP of assignment involves replacing names by expressions in the postcondition.
+When the target of the assignment is a name, we replace the given name by the value
+of the assignment. When the target is an array, we replace the index by an appropriate
+\texttt{Repby}. Refer to the \texttt{replace} function for the concrete implementation
+details of the replacing algorithm (defined in \texttt{Rewriting.hs}).
+
+\subsection{Calculating QuickCheck properties}
+
+The output of the WLP step is a first order logic expression. Afterwards, we
+need to ensure that said expression is always true.
+
+\begin{enumerate}
+\item Normalize the predicate
+\item Calculate the ranges
+\item Create QuickCheck generators based on the ranges
+\end{enumerate}
 
 \subsection{Feeding to QuickCheck}
 

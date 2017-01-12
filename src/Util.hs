@@ -6,3 +6,7 @@ import qualified Data.Set as Set
 -- Equivalent definitions are '(.).(.)' and 'fmap fmap fmap'
 (...) :: (a -> b) -> (c -> d -> a) -> (c -> d -> b)
 (...) f g x y = f $ g x y
+
+fromRight :: Show l => Either l r -> r
+fromRight (Left err) = error $ "Unexpected error " ++ show err
+fromRight (Right a) = a
