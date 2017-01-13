@@ -107,11 +107,14 @@ testPredicate pred' = checkCase
 
     -- Make sure any expressions in the AsgTarget get evaluated
     literalize :: Map.Map AsgTarget Literal -> Map.Map AsgTarget Literal
-    literalize env = Map.mapKeys (evaluateAsg env) env
+    literalize env = if env' == env then env else literalize env'
+        where env' = Map.mapKeys (evaluateAsg env) env
     evaluateAsg :: Map.Map AsgTarget Literal -> AsgTarget -> AsgTarget
     evaluateAsg env (NameTarget n) = NameTarget n
-    evaluateAsg env (ArrTarget arr index)
-        = ArrTarget arr $ LiteralExpr $ fromRight $ evaluateClosed index env
+    evaluateAsg env target@(ArrTarget arr index)
+        = case evaluateClosed index env of
+            Left missing -> target
+            Right result -> ArrTarget arr $ LiteralExpr $ result
 
     instantiations :: Gen (Map.Map AsgTarget Literal)
     instantiations = mapM rangeToGen ranges
