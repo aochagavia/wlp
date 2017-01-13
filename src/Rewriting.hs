@@ -78,7 +78,8 @@ instance FreeVars Expression where
         left' = replace left substs
         right' = replace right substs
     replace (Negation e) substs = Negation $ replace e substs
-    replace (Index name e) substs = Index name $ replace e substs
+    replace (Index a i) substs = Index (replace a substs) $ replace i substs
+    replace (Repby a i e) substs = Repby (replace a substs) (replace i substs) (replace e substs)
     replace f@(Forall v@(Variable name _) e) substs = Forall v $ replace e substs'
         where
         substs' = Map.delete name substs
@@ -109,10 +110,12 @@ instance FreeVars Statement where
     replace (Assign vars exprs) substs = Assign replacedVars replacedExprs
         where
         replacedVars :: [AsgTarget]
-        replacedVars = map (`replaceVar'` substs) (map toName vars)
-        replaceVar' :: Name -> Map.Map Name Expression -> AsgTarget
-        replaceVar' name substs = case replaceVar name substs of
+        replacedVars = map (`replaceVar'` substs) vars
+        replaceVar' :: AsgTarget -> Map.Map Name Expression -> AsgTarget
+        replaceVar' (NameTarget name) substs = case replaceVar name substs of
             NameExpr result -> NameTarget result
+        replaceVar' (ArrTarget arr index) substs = case replaceVar arr substs of
+            NameExpr result -> ArrTarget result $ replace index substs
         replacedExprs :: [Expression]
         replacedExprs = map (`replace` substs) exprs
     replace (Sequence stmt1 stmt2) substs = Sequence stmt1' stmt2'
@@ -138,12 +141,14 @@ typeInferExpr :: Type -> Expression -> Map.Map AsgTarget Type
 typeInferExpr return (LiteralExpr _) = Map.empty
 typeInferExpr return (NameExpr name) = Map.singleton (NameTarget name) return
 typeInferExpr (Primitive BoolType) (Negation expr) = typeInferExpr bool expr
-typeInferExpr (Primitive prim) (Index arr@(NameExpr arrName) index) = result
+typeInferExpr (Primitive prim) (Index arr index) = result
     where
-    result = Map.insert (ArrTarget arrName index) (Primitive prim) $
+    result = Map.insert (ArrTarget (arrName arr) index) (Primitive prim) $
         indexMap `Map.union` arrMap
     indexMap = typeInferExpr int index
     -- We need to know that we want to index the array at a given point
+    arrName (NameExpr name) = name
+    arrName (Repby arr _ _) = arrName arr
     arrMap = typeInferExpr (Array prim) arr
 typeInferExpr (Primitive BoolType) (Forall (Variable name _) expr) = deleted
     where
@@ -155,3 +160,10 @@ typeInferExpr return (Operated op expr1 expr2) = left `Map.union` right
     (expectedReturn, expectedLeft, expectedRight) = operatorType op
     left = typeInferExpr expectedLeft expr1
     right = typeInferExpr expectedRight expr2
+typeInferExpr (Array prim) (Repby arr index expr) = result
+    where
+    result = arrMap `Map.union` indexMap `Map.union` exprMap
+    arrMap = typeInferExpr (Array prim) arr
+    indexMap = typeInferExpr int index
+    exprMap = typeInferExpr (Primitive prim) expr
+typeInferExpr ty expr = error $ "Type error: cannot infer " ++ show ty ++ " for " ++ show expr

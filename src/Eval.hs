@@ -19,17 +19,19 @@ type ExpressionAlgebra a =
     , BinaryOp -> a -> a -> a -- Operated
     , a -> a -- Negation
     , a -> a -> a -- Index
+    , a -> a -> a -> a -- Repby
     , BoundVariable -> a -> a -- Forall
     )
 
 -- |Turn an algebra into a catamorphism
 foldExpression :: ExpressionAlgebra a -> Expression -> a
-foldExpression (literal, name, operated, negation, index, forall) = fold' where
+foldExpression (literal, name, operated, negation, index, repby, forall) = fold' where
     fold' (LiteralExpr l) = literal l
     fold' (NameExpr n) = name n
     fold' (Operated op e1 e2) = operated op (fold' e1) (fold' e2)
     fold' (Negation e) = negation (fold' e)
     fold' (Index a e) = index (fold' a) (fold' e)
+    fold' (Repby a i e) = repby (fold' a) (fold' i) (fold' e)
     fold' (Forall n e) = forall n (fold' e)
 
 -- |Evaluate the binary operation.

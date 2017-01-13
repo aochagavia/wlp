@@ -135,3 +135,7 @@ testPredicate pred' = checkCase
     intervalToGenI (Bounded lower, Bounded upper) = elements [lower .. upper]
     rangeToGenB :: BoolRange -> Gen Bool
     rangeToGenB = elements . Set.toList
+
+-- |Use QuickCheck to test each path through the program up to a given length.
+wlpCheck :: Program -> Int -> Property
+wlpCheck prog len = conjoin $ map (testPredicate . wlpPath) $ paths len prog

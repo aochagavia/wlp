@@ -1,6 +1,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 
 import Control.Applicative
+import qualified Data.Map as Map
 import qualified Data.Set as Set
 
 import Lib
@@ -123,7 +124,7 @@ prop_exampleProgramPaths = once $ foundPaths === expectedPaths
         ]
 
 prop_exampleProgramIsWrong :: Property
-prop_exampleProgramIsWrong = expectFailure $ conjoin $ map (testPredicate . wlpPath) $ paths 7 exampleProgram
+prop_exampleProgramIsWrong = expectFailure $ wlpCheck exampleProgram 7
 
 -- |The example program E from the assignment, but now it works
 exampleProgramFixed :: Program
@@ -135,7 +136,7 @@ exampleProgramFixed = program [("x", int)] [("y", int)] [
     ]
 
 prop_exampleProgramIsFixed :: Property
-prop_exampleProgramIsFixed = conjoin $ map (testPredicate . wlpPath) $ paths 7 exampleProgramFixed
+prop_exampleProgramIsFixed = wlpCheck exampleProgramFixed 7
 
 -- |The minind program from assignment 1
 minind :: Program
@@ -150,12 +151,12 @@ minind = program [("a", Array IntType), ("i", int), ("N", int)] [("r", int)] [
                 assignN ["i"] [ref "i" +. i 1]
             ]
         ],
-        assert $ forall "j" int (((ref "j" >=. ref "i") /\. (ref "r" <. ref "N")) =>.
+        assert $ forall "j" int (((ref "j" >=. ref "i") /\. (ref "j" <. ref "N")) =>.
             (("a" !!. ref "j") <=. ("a" !!. ref "r")))
     ]
 
 prop_minindWorks :: Property
-prop_minindWorks = conjoin $ map (testPredicate . wlpPath) $ paths 10 minind
+prop_minindWorks = wlpCheck minind 10
 
 -- |The minind program from assignment 1 with a broken postcondition
 minindWrong :: Program
@@ -174,7 +175,7 @@ minindWrong = program [("a", Array IntType), ("i", int), ("N", int)] [("r", int)
     ]
 
 prop_minindIsWrong :: Property
-prop_minindIsWrong = expectFailure $ conjoin $ map (testPredicate . wlpPath) $ paths 10 minindWrong
+prop_minindIsWrong = expectFailure $ wlpCheck minindWrong 10
 
 swap :: Program
 swap = program [("a", Array IntType), ("i", int), ("j", int)] [("a'", Array IntType)] [
@@ -189,7 +190,7 @@ swap = program [("a", Array IntType), ("i", int), ("j", int)] [("a'", Array IntT
     ]
 
 prop_swapWorks :: Property
-prop_swapWorks = conjoin $ map (testPredicate . wlpPath) $ paths 10 swap
+prop_swapWorks = wlpCheck swap 10
 
 swapWrong :: Program
 swapWrong = program [("a", Array IntType), ("i", int), ("j", int)] [("a'", Array IntType)] [
@@ -204,7 +205,7 @@ swapWrong = program [("a", Array IntType), ("i", int), ("j", int)] [("a'", Array
     ]
 
 prop_swapIsWrong :: Property
-prop_swapIsWrong = expectFailure $ conjoin $ map (testPredicate . wlpPath) $ paths 10 swapWrong
+prop_swapIsWrong = expectFailure $ wlpCheck swapWrong 10
 -- |Represents parts of expressions that have an explicit type.
 class ArbitraryTyped a where
     arbitraryTyped :: Type -> Gen a
@@ -281,6 +282,40 @@ prop_normalizeIsEquivalent = forAll (arbitraryTyped bool) doCheck
 prop_refreshKeepsVars :: Property
 prop_refreshKeepsVars = forAll (arbitraryTyped bool :: Gen Expression) $ (\expr ->
         freeVars expr == freeVars (refresh Set.empty expr))
+
+-- |Make sure the wlp after assignment of arrays is calculated correctly
+prop_wlpArrayAssign :: Property
+prop_wlpArrayAssign = once $ wlp' stmt q === expectedP
+    where
+    stmt = assignN ["x'"] [ref "x"]
+    q = Index (ref "x'") (i 0) ==. i 0
+    expectedP = Index (ref "x") (i 0) ==. i 0
+-- |Make sure the wlp after assignment of array indices is calculated correctly
+prop_wlpIndexAssign :: Property
+prop_wlpIndexAssign = once $ wlp' stmt q === expectedP
+    where
+    stmt = Assign [ArrTarget "a" $ i 0] [ref "x"]
+    q = ("a" !!. i 0) ==. i 42
+    expectedP = Index (Repby (ref "a") (i 0) (ref "x")) (i 0) ==. i 42
+-- |Make sure the wlp after assignment from and to array indices is calculated correctly
+prop_wlpIndicesAssign :: Property
+prop_wlpIndicesAssign = once $ wlp' stmt q === expectedP
+    where
+    stmt = Assign [ArrTarget "a" $ i 0] ["x" !!. i 1]
+    q = ("a" !!. i 0) ==. i 42
+    expectedP = Index (Repby (ref "a") (i 0) ("x" !!. i 1)) (i 0) ==. i 42
+
+-- |Replacing variables inside an assignment shouldn't break array indexing
+prop_replaceArrayIndex :: Property
+prop_replaceArrayIndex = once $ replace stmt replacements === stmt'
+    where
+    stmt = Assign [ArrTarget "a" $ ref "i"] [ref "x"]
+    stmt' = Assign [ArrTarget "b" $ ref "j"] [ref "y"]
+    replacements = Map.fromList
+        [ ("a", ref "b")
+        , ("i", ref "j")
+        , ("x", ref "y")
+        ]
 
 -- Evil QuickCheck TemplateHaskell hackery
 return []

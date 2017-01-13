@@ -72,7 +72,7 @@ fullRangeFor (Array prim) = RangeArray $ fullRangeFor (Primitive prim)
 -- (which makes finding counterexamples a lot easier)
 -- In P'NF, we only have Forall, so we also allow (a single) Negation in between Forall
 prenex' :: Predicate -> Predicate
-prenex' = foldExpression (LiteralExpr, NameExpr, op, neg, Index, Forall)
+prenex' = foldExpression (LiteralExpr, NameExpr, op, neg, Index, Repby, Forall)
     where
     -- Refresh (only) the given variable
     refresh' :: (FreeVars syntax, Bindable var) => var -> syntax -> syntax
@@ -150,5 +150,6 @@ isQuantifierFree = foldExpression
     , const (&&) -- Operated
     , id -- Negation
     , const $ const True -- Index
+    , const $ const -- Repby
     , const $ const False -- Forall
     )
