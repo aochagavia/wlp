@@ -123,8 +123,8 @@ prop_exampleProgramPaths = once $ foundPaths === expectedPaths
             [assume $ i (-1) <=. ref "x", assume $ i 0 <. ref "x", assignN ["x"] [ref "x" -. i 1], assume $ i 0 <. ref "x", assignN ["x"] [ref "x" -. i 1], assume $ neg $ i 0 <. ref "x", assignN ["y"] [ref "x"], assert $ ref "y" ==. i 0]
         ]
 
-prop_exampleProgramIsWrong :: Property
-prop_exampleProgramIsWrong = expectFailure $ wlpCheck exampleProgram 7
+exampleProgramIsWrong :: IO Result
+exampleProgramIsWrong = wlpCheck "exampleProgram" exampleProgram 7
 
 -- |The example program E from the assignment, but now it works
 exampleProgramFixed :: Program
@@ -135,8 +135,8 @@ exampleProgramFixed = program [("x", int)] [("y", int)] [
         assert $ ref "y" ==. i 0
     ]
 
-prop_exampleProgramIsFixed :: Property
-prop_exampleProgramIsFixed = wlpCheck exampleProgramFixed 7
+exampleProgramIsFixed :: IO Result
+exampleProgramIsFixed = wlpCheck "exampleProgram" exampleProgramFixed 7
 
 -- |The minind program from assignment 1
 minind :: Program
@@ -155,8 +155,8 @@ minind = program [("a", Array IntType), ("i", int), ("N", int)] [("r", int)] [
             (("a" !!. ref "j") <=. ("a" !!. ref "r")))
     ]
 
-prop_minindWorks :: Property
-prop_minindWorks = wlpCheck minind 10
+minindWorks :: IO Result
+minindWorks = wlpCheck "minind" minind 10
 
 -- |The minind program from assignment 1 with a broken postcondition
 minindWrong :: Program
@@ -174,8 +174,8 @@ minindWrong = program [("a", Array IntType), ("i", int), ("N", int)] [("r", int)
         assert $ forall "j" int (("a" !!. ref "j") <=. ("a" !!. ref "r"))
     ]
 
-prop_minindIsWrong :: Property
-prop_minindIsWrong = expectFailure $ wlpCheck minindWrong 10
+minindIsWrong :: IO Result
+minindIsWrong = wlpCheck "minind" minindWrong 10
 
 swap :: Program
 swap = program [("a", Array IntType), ("i", int), ("j", int)] [("a'", Array IntType)] [
@@ -189,8 +189,8 @@ swap = program [("a", Array IntType), ("i", int), ("j", int)] [("a'", Array IntT
         assert $ (("a'" !!. ref "j") ==. ref "x") /\. (("a'" !!. ref "i") ==. ref "y")
     ]
 
-prop_swapWorks :: Property
-prop_swapWorks = wlpCheck swap 10
+swapWorks :: IO Result
+swapWorks = wlpCheck "swap" swap 10
 
 swapWrong :: Program
 swapWrong = program [("a", Array IntType), ("i", int), ("j", int)] [("a'", Array IntType)] [
@@ -204,8 +204,34 @@ swapWrong = program [("a", Array IntType), ("i", int), ("j", int)] [("a'", Array
         assert $ (("a'" !!. ref "i") ==. ref "x") /\. (("a'" !!. ref "j") ==. ref "y")
     ]
 
-prop_swapIsWrong :: Property
-prop_swapIsWrong = expectFailure $ wlpCheck swapWrong 10
+swapIsWrong :: IO Result
+swapIsWrong = wlpCheck "swap" swapWrong 10
+
+findNonzeroWrong :: Program
+findNonzeroWrong = program [("a", Array IntType)] [("i", int)] [
+        assume $ neg $ forall "j" int $ ("a" !!. ref "j") ==. i 0,
+        assert $ ("a" !!. ref "j") !=. i 0
+    ]
+
+findNonzeroIsWrong :: IO Result
+findNonzeroIsWrong = wlpCheck "findNonzero" findNonzeroWrong 20
+
+findNonzero :: Program
+findNonzero = program [("a", Array IntType)] [("i", int)] [
+        assume $ neg $ forall "j" int $ ("a" !!. ref "j") ==. i 0,
+        while (("a" !!. ref "i") ==. i 0) [
+            var [("j", int)] [
+                if_ (("a" !!. ref "j") !=. i 0) [
+                    assignN ["i"] [ref "j"]
+                ] []
+            ]
+        ],
+        assert $ ("a" !!. ref "i") !=. i 0
+    ]
+
+findNonzeroWorks :: IO Result
+findNonzeroWorks = wlpCheck "findNonzero" findNonzero 20
+
 -- |Represents parts of expressions that have an explicit type.
 class ArbitraryTyped a where
     arbitraryTyped :: Type -> Gen a
@@ -319,4 +345,18 @@ prop_replaceArrayIndex = once $ replace stmt replacements === stmt'
 
 -- Evil QuickCheck TemplateHaskell hackery
 return []
-main = $quickCheckAll
+runTests = $quickCheckAll
+
+main = do
+    runTests
+    putStrLn "The following programs should fail:"
+    exampleProgramIsWrong
+    minindIsWrong
+    swapIsWrong
+    findNonzeroIsWrong
+
+    putStrLn "The following programs should work:"
+    exampleProgramIsFixed
+    minindWorks
+    swapWorks
+    findNonzeroWorks

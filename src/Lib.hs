@@ -1,3 +1,4 @@
+{-# LANGUAGE NamedFieldPuns #-}
 module Lib where
 
 import Eval
@@ -90,17 +91,13 @@ paths n (Program _ _ s) = map fst $ paths' n s
 -- |Instantiate the free variables of a predicate and check that it holds.
 -- Uses 'Gen' to convert ranges of acceptable values to a single value.
 testPredicate :: Predicate -> Property
-testPredicate pred' = checkCase
+testPredicate pred = checkCase
     where
-    -- Normalize the predicate so we don't test too complicated things
-    pred :: Predicate
-    pred = normalize pred'
-
     checkCase :: Property
     checkCase =
         if any isEmpty ranges
         then property True -- If the conditions aren't met, we always succeed
-        else counterexample (show pred') $ forAll instantiations runCase
+        else counterexample (show pred) $ forAll instantiations runCase
 
     runCase :: Map.Map AsgTarget Literal -> Bool
     runCase = literalToBool . fromRight . evaluateClosed pred . literalize
@@ -140,5 +137,37 @@ testPredicate pred' = checkCase
     rangeToGenB = elements . Set.toList
 
 -- |Use QuickCheck to test each path through the program up to a given length.
-wlpCheck :: Program -> Int -> Property
-wlpCheck prog len = conjoin $ map (testPredicate . wlpPath) $ paths len prog
+wlpCheck :: String -> Program -> Int -> IO Result
+wlpCheck testName prog len = do
+    putStrLn $ "Testing " ++ testName
+    let testCases = map qcResult properties
+    finalResult <- foldr conjoinResult (pure noPaths) testCases
+    case finalResult of
+        NoExpectedFailure{output} -> do
+            putStrLn $ output
+            return finalResult
+        Failure{output} -> do
+            putStrLn $ output
+            return finalResult
+        Success{} -> do
+            putStrLn "Succeeded."
+            return finalResult
+    where
+    qcResult = quickCheckWithResult stdArgs{chatty = False, maxSuccess = 1000}
+    noPaths :: Result
+    noPaths = Success 0 [] "No more paths to consider."
+    properties :: [Property]
+    properties = map (checkComplicated . normalize . wlpPath) $ paths len prog
+    -- We have to do our own combination of predicates since QuickCheck can't
+    -- calculate the conjunction of predicates with expectFailure.
+    checkComplicated :: Predicate -> Property
+    checkComplicated (Negation pred) = expectFailure $ checkComplicated (normalize pred)
+    checkComplicated pred = testPredicate pred
+    conjoinResult :: IO Result -> IO Result -> IO Result
+    conjoinResult first second = do
+        -- Test the first, if it didn't fail, test the second.
+        firstResult <- first
+        case firstResult of
+            Failure{} -> return firstResult
+            NoExpectedFailure{} -> return firstResult
+            _ -> second

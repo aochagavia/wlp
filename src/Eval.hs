@@ -85,5 +85,4 @@ evaluateClosed expr env = fold' expr where
     index (NameExpr name) i' = do
         i <- i'
         tryLookup $ ArrTarget name $ LiteralExpr i
-    -- TODO: make this somewhat usable
-    forall = error "Tautology of predicate logic is undecidable :("
+    forall = error "Cannot decide forall!. Use wlpCheck to remove quantifiers."

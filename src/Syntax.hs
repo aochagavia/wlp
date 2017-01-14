@@ -136,13 +136,13 @@ data Expression
     deriving (Eq, Ord)
 
 instance Show Expression where
-    show (LiteralExpr l) = "(" ++ show l ++ ")"
+    show (LiteralExpr l) = show l
     show (NameExpr n) = n
-    show (Operated op ex1 ex2) = "(" ++ show ex1 ++ " " ++ show op ++ " " ++ show ex2 ++ ")"
+    show (Operated op ex1 ex2) = "(" ++ show ex1 ++ ") " ++ show op ++ " (" ++ show ex2 ++ ")"
     show (Negation expr) = "~(" ++ show expr ++ ")"
     show (Index arr expr) = "(" ++ show arr ++ ")[" ++ show expr ++ "]"
-    show (Forall var expr) = "(forall " ++ show var ++ " . " ++ show expr ++ ")"
-    show (Repby var index expr) = "(" ++ show var ++ "[" ++ show index ++ "]" ++ show expr ++ ")"
+    show (Forall var expr) = "forall " ++ show var ++ " . " ++ show expr ++ ""
+    show (Repby var index expr) = "(" ++ show var ++ ")[" ++ show index ++ " <- " ++ show expr ++ "]"
 
 -- *Building an AST
 -- The data types defined above are quite impractical, so let's make them easier to read.
