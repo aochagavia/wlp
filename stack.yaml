@@ -4,5 +4,6 @@ packages:
 - '.'
 extra-deps:
 - QuickCheck-2.9.2
+- containers-0.5.9.1
 - primitive-0.6.2.0
 resolver: lts-7.10
