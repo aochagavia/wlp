@@ -6,6 +6,7 @@ import qualified Data.Set as Set
 
 import Lib
 import Predicate
+import Range
 import Rewriting
 import Syntax
 
@@ -343,6 +344,21 @@ prop_replaceArrayIndex = once $ replace stmt replacements === stmt'
         , ("x", ref "y")
         ]
 
+prop_unionAliases :: Property
+prop_unionAliases = once $ unionAliasRange ranges aliases === expected
+    where
+    ranges :: RangeMap
+    ranges = Map.fromList
+        [ (NameTarget "x", rightInfinite (-1))
+        , (NameTarget "y", leftInfinite 1)
+        ]
+    aliases :: AliasMap
+    aliases = symmetrical (NameTarget "x") (NameTarget "y")
+    expected :: RangeAliasMap
+    expected = Map.fromList
+        [ (NameTarget "x", Right $ NameTarget "y")
+        , (NameTarget "y", Left $ bounded (-1) 1)
+        ]
 -- Evil QuickCheck TemplateHaskell hackery
 return []
 runTests = $quickCheckAll
