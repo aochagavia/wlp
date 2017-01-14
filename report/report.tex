@@ -3,6 +3,7 @@
 \usepackage{xltxtra}
 \usepackage{url}
 \usepackage{polyglossia}
+\usepackage{amsmath}
 \setdefaultlanguage{english}
 
 % Command to typeset ++
@@ -90,7 +91,9 @@ after the other. Let $firstPaths$ be the set of possible execution paths for
 the first statement and $lastPaths$ those for the second statement. Then, the
 possible execution paths for \texttt{Sequence} are defined as:
 
-\[ Paths(Sequence) = \{ p_1 \mdoubleplus p_2 | p_1 \in firstPaths, p_2 \in lastPaths\} \]
+\begin{align*}
+	\text{Paths}(\text{first} ; \text{second}) &= \{ p_1 \mdoubleplus p_2 \mid p_1 \in \text{Paths}(\text{first}), p_2 \in \text{Paths}(\text{second})\}.
+\end{align*}
 
 \subsubsection*{If-then-else}
 
@@ -98,31 +101,37 @@ The if-then-else statement contains two statements, one for the \texttt{then} br
 and one for the \texttt{else} branch. Since only one of them will be executed
 when the program is run, the paths for if-then-else are defined as:
 
-\[ Paths(IfThenElse) = Paths(then) \cup Paths(else) \]
+\begin{align*}
+	\text{Paths}(\texttt{if } \text{cond } \text{then } \text{else}) &= \text{Paths}(\text{then}) \cup \text{Paths}(\text{else}).
+\end{align*}
 
-% The paragraph below refers to an implementation detail. Should we include it
-% or leave it? I already say in the beginning of the subsection that we introduce
-% assumes and asserts to drive the WLP calculation later on. Conceptually, they don't
-% seem to be part of the path.
-%
-% Note, however, that we need to prepend an assumption of the if condition for each
-% path in the \texttt{then} branch, and a negation thereof for each path in the
-% \texttt{else} branch. This is necessary to drive the WLP calculation later on.
+Note, however, that we need to prepend an assumption of the condition for each
+path in the \texttt{then} branch, and a negation thereof for each path in the
+\texttt{else} branch. This is necessary to drive the WLP calculation later on.
 
 \subsubsection*{While}
 
-When calculating the paths in a while we assume that the condition is true
-after each iteration. By doing this, we can obtain the paths in the body and
-unroll the loop as much as possible:
+To calculate the paths in a while, we make a path where the condition is
+initially false and a path where the condition is initially false, the body is
+executed and a new path through the while loop is executed. By doing this
+rescursively, we can obtain the paths in the body and unroll the loop as much
+as possible:
 
-\[ Paths(While) = \{ p_{body} \mdoubleplus p_{while} | p_{body} \in Paths(body), p_{while} \in Paths(While)\} \]
+\begin{align*}
+	\text{Paths}(\texttt{while } \text{cond } \text{body}) &= \{[]\} \cup (\text{Paths}(\text{body}) \mdoubleplus \text{Paths}(\texttt{while } \text{cond } \text{body}) ).
+\end{align*}
 
 Of course, in our code we add a path length limit in order to prevent generation
 of infinite paths. We also add a path in which the condition is false. In that
-case, the body of the while is not executed so the path is empty.
+case, the body of the while is not executed so the path is empty. As in the
+if-then-else paths, we use assumptions to control the state of the condition.
 
-FIXME: wouldn't it be more correct to do finite unfolding as explained in the lectures?
-Currently we are assuming that the condition holds after each iteration, which is not realistic
+Note that we do not do a finite unfolding where we assert that the loop is
+traversed a set number of times. Instead, we assume the number of loop
+iterations for each path. If we used assertions instead of assumptions, the
+checker would reject all loops. Given two paths with different iteration counts,
+no (consistent) precondition would satisfy an assertion that both paths will
+be executed, but there are preconditions that either path may be taken.
 
 \subsection{Calculating WLP}
 
@@ -165,25 +174,40 @@ A detailed explanation of the workings of each step is provided below.
 
 \subsubsection*{Normalize WLP}
 
-What exactly happens here?
+We rewrite the predicate in the prenex normal form. After normalization, the
+predicate will start with a string of quantifiers, followed by a quantifier-free
+formula. Since we find a counterexample to the predicate by checking various
+instantiations of the quantifiers, normalizing will show exactly which
+quantifiers need to be instantiated.
+
+By discarding all universal quantifiers in front of the WLP, we do not have to
+handle these seperately, but as free variables. A formula without quantifiers
+and instantiations for all free variables is very easy to decide, while many
+formulae with quantifiers are undecidable.
+
+Additionally, we do some rewriting on the predicate to simplify it. These steps
+include removing double negations and reducing expressions with constants,
+such as $\phi \vee \bot$, to simpler expressions such as $\phi$.
 
 \subsubsection*{Calculate Ranges}
 
-Before using QuickCheck to randomly generate
-We need QuickCheck to generate only relevant test cases.
-
-Irrelevant ones:
+We need QuickCheck to generate only relevant test cases. We are looking for a
+counterexample that makes the program fail. When the precondition does not hold
+for the example we want to consider, there is no way to make the program fail.
+Similarly, when the postcondition always holds, there is no need to search for
+preconditions that make the postcondition fail. Therefore, we consider a test
+case irrelevant when it has:
 
 \begin{itemize}
 \item Invalid precondition: useless, since we are looking for a counterexample.
-\item FIXME: which was the second case?
+\item Trivial postcondition: useless, since we are looking for a counterexample.
 \end{itemize}
 
 Therefore, we introduce the concept of ranges. A range represents the set of
 values that a variable can take, while still satisfying the previous requirements.
 Initially, all free variables get an infinite range, which is then partially narrowed.
 Because complete narrowing would be equivalent to SAT solving, we only consider
-trivial cases.
+relatively simple cases.
 
 As an example, let us consider the ranges that would be generated for the following WLP
 expression:
@@ -194,20 +218,19 @@ It is clear that we want to generate a $k$ in the range $[0, 10]$ and a $q$
 that is \texttt{True}. In any other case, the left side of the implication cannot
 be true and the whole expression will trivially evaluate to \texttt{True}.
 
-\subsubsection*{Generate sets of variable instantiations}
-
-Trivial once you have the ranges? Merge with previous subsubsection?
-
-Create QuickCheck generators
+From the ranges we have constructed for the variables, we make QuickCheck
+generators that generate values in the corresponding ranges. If the range turns
+out empty for some variable, QuickCheck will raise an error so we will need to
+check the ranges before continuing with the test.
 
 \subsubsection*{Ensure that the WLP holds for all sets of variable instantiations}
 
 Construct a \texttt{Property} that takes the input generated by the previous
 generator, feeds it to the WLP and ensures that it holds.
 
-In case any of the ranges is empty, we know that the precondition
-cannot be satisfied. This means that the \texttt{Property} always holds
-because the precondition is false.
+In case any of the ranges is empty, we know that the precondition cannot be
+satisfied or the postcondition is always satisfied. This means that the
+\texttt{Property} always holds, and we immediately report a success.
 
 However, in most cases, the ranges are not empty and we try to find a counterexample
 based on the generated instantiations. That is, for each generated set of variable
@@ -219,7 +242,8 @@ operates in two steps:
 
 \begin{enumerate}
 \item Ensure that all expressions in an assignment target are evaluated (performed
-by the \texttt{literalize} function). FIXME: why is this necessary?
+by the \texttt{literalize} function). This ensures array indexing is performed
+consistently, so $a[i]$ and $a[j]$ will always be the same value if $i = j$.
 \item Evaluate the WLP with the given variable instantiations (performed by the
 \texttt{evaluateClosed} function in \texttt{Eval.hs}).
 \end{enumerate}
