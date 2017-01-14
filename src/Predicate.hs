@@ -54,6 +54,10 @@ nonTrivRange True (Operated LessEqual (NameExpr n) (LiteralExpr (LiteralInt i)))
     = Map.singleton (NameTarget n) $ rightInfinite $ i + 1
 nonTrivRange True (Operated LessEqual (LiteralExpr (LiteralInt i)) (NameExpr n))
     = Map.singleton (NameTarget n) $ leftInfinite $ i - 1
+nonTrivRange True (Operated Equal (LiteralExpr (LiteralInt i)) (NameExpr n))
+    = Map.singleton (NameTarget n) $ exclude i
+nonTrivRange True (Operated Equal (NameExpr n) (LiteralExpr (LiteralInt i)))
+    = Map.singleton (NameTarget n) $ exclude i
 -- The same as above but for indexing
 nonTrivRange True (Operated LessThan (Index (NameExpr n) e) (LiteralExpr (LiteralInt i)))
     = Map.singleton (ArrTarget n e) $ rightInfinite i
@@ -64,9 +68,9 @@ nonTrivRange True (Operated LessEqual (Index (NameExpr n) e) (LiteralExpr (Liter
 nonTrivRange True (Operated LessEqual (LiteralExpr (LiteralInt i)) (Index (NameExpr n) e))
     = Map.singleton (ArrTarget n e) $ leftInfinite $ i - 1
 nonTrivRange True (Operated Equal (LiteralExpr (LiteralInt i)) (Index (NameExpr n) e))
-    = Map.singleton (ArrTarget n e) $ bounded i i
+    = Map.singleton (ArrTarget n e) $ exclude i
 nonTrivRange True (Operated Equal (Index (NameExpr n) e) (LiteralExpr (LiteralInt i)))
-    = Map.singleton (ArrTarget n e) $ bounded i i
+    = Map.singleton (ArrTarget n e) $ exclude i
 
 nonTrivRange False (Operated LessThan (NameExpr n) (LiteralExpr (LiteralInt i)))
     = Map.singleton (NameTarget n) $ leftInfinite $ i-1
@@ -93,6 +97,8 @@ nonTrivRange False (Operated Equal (LiteralExpr (LiteralInt i)) (Index (NameExpr
     = Map.singleton (ArrTarget n e) $ bounded i i
 nonTrivRange False (Operated Equal (Index (NameExpr n) e) (LiteralExpr (LiteralInt i)))
     = Map.singleton (ArrTarget n e) $ bounded i i
+
+nonTrivRange bool (Forall var expr) = nonTrivRange bool expr
 
 nonTrivRange _ _ = Map.empty -- TODO: find some other cases to cover
 
@@ -181,31 +187,60 @@ prenex' = foldExpression (LiteralExpr, NameExpr, op, neg, Index, Repby, Forall)
 normalize :: Predicate -> Predicate
 normalize = stripForall . prenex' . normalize'
     where
+    normalize' = foldExpression (LiteralExpr, NameExpr, operated, negation, Index, Repby, Forall)
     -- | ~ ~ a === a
-    normalize' (Negation (Negation exp)) = exp -- Which is not true in constructive logic!
-    normalize' (Negation exp) = Negation $ normalize' exp
+    negation (Negation exp) = exp
+    negation exp = Negation exp
+    -- Evaluate as much as possible.
+    operated op (LiteralExpr l1) (LiteralExpr l2) = LiteralExpr $ operate op l1 l2
     -- | e1 => (e2 => e3) === (e1 /\ e2) => e3
-    normalize' (Operated Implies e1 (Operated Implies e2 e3)) = normalize' $ (e1' /\. e2') =>. e3'
-        where
-        e1' = normalize' e1
-        e2' = normalize' e2
-        e3' = normalize' e3
+    operated Implies e1 (Operated Implies e2 e3) = normalize' $ (e1 /\. e2) =>. e3
     -- | (True /\ e1) = e1 and (False /\ e1) = False (and symmetrically)
-    normalize' (Operated Wedge e1 (LiteralExpr (LiteralBool True))) = normalize' e1
-    normalize' (Operated Wedge e1 (LiteralExpr (LiteralBool False))) = b False
-    normalize' (Operated Wedge (LiteralExpr (LiteralBool True)) e1) = normalize' e1
-    normalize' (Operated Wedge (LiteralExpr (LiteralBool False)) e1) = b False
+    operated Wedge e1 (LiteralExpr (LiteralBool True)) = e1
+    operated Wedge e1 (LiteralExpr (LiteralBool False)) = b False
+    operated Wedge (LiteralExpr (LiteralBool True)) e1 = e1
+    operated Wedge (LiteralExpr (LiteralBool False)) e1 = b False
     -- | (True \/ e1) = True and (False \/ e1) = e1 (and symmetrically)
-    normalize' (Operated Vee e1 (LiteralExpr (LiteralBool True))) = b True
-    normalize' (Operated Vee e1 (LiteralExpr (LiteralBool False))) = normalize' e1
-    normalize' (Operated Vee (LiteralExpr (LiteralBool True)) e1) = b True
-    normalize' (Operated Vee (LiteralExpr (LiteralBool False)) e1) = normalize' e1
+    operated Vee e1 (LiteralExpr (LiteralBool True)) = b True
+    operated Vee e1 (LiteralExpr (LiteralBool False)) = e1
+    operated Vee (LiteralExpr (LiteralBool True)) e1 = b True
+    operated Vee (LiteralExpr (LiteralBool False)) e1 = e1
     -- | True -> e1 === e1 and False -> e1 === True
-    normalize' (Operated Implies (LiteralExpr (LiteralBool True)) e1) = normalize' e1
-    normalize' (Operated Implies (LiteralExpr (LiteralBool False)) e1) = b True
-    normalize' (Operated op e1 e2) = Operated op (normalize' e1) (normalize' e2)
-    normalize' (Forall var exp) = Forall var (normalize' exp)
-    normalize' e = e
+    operated Implies (LiteralExpr (LiteralBool True)) e1 = e1
+    operated Implies (LiteralExpr (LiteralBool False)) e1 = b True
+    -- | e1 -> True === True and e1 -> False === Negation e1
+    operated Implies e1 (LiteralExpr (LiteralBool True)) = b True
+    operated Implies e1 (LiteralExpr (LiteralBool False)) = negation e1
+    -- Try to evaluate more of the expression
+    operated LessThan e1 e2 = moveLiterals LessThan e1 e2
+    operated LessEqual e1 e2 = moveLiterals LessEqual e1 e2
+    operated Equal e1 e2 = moveLiterals Equal e1 e2
+    operated op e1 e2 = Operated op e1 e2
+
+    -- Group the literals on the same side of an (in)equality operator
+    -- we assume that there aren't any sides that aren't evaluated already.
+    moveLiterals :: BinaryOp -> Expression -> Expression -> Expression
+    -- e1 - e2 >=< e3 === e1 >=< e3 + e2 === e1 - e3 >=< e2
+    moveLiterals op (Operated Minus e1 e2@LiteralExpr{}) e3@LiteralExpr{}
+        = operated op e1 $ operated Plus e3 e2
+    moveLiterals op (Operated Minus e1@LiteralExpr{} e2) e3@LiteralExpr{}
+        = operated op (operated Minus e1 e3) e2
+    -- e1 + e2 >=< e3 === e1 >=< e3 - e2 === e2 >=< e3 - e1
+    moveLiterals op (Operated Plus e1 e2@LiteralExpr{}) e3@LiteralExpr{}
+        = operated op e1 $ operated Minus e3 e2
+    moveLiterals op (Operated Plus e1@LiteralExpr{} e2) e3@LiteralExpr{}
+        = operated op e2 $ operated Minus e1 e1
+    -- e1 >=< e2 - e3 === e1 + e3 >=< e2 === e3 >=< e2 - e1
+    moveLiterals op e1@LiteralExpr{} (Operated Minus e2 e3@LiteralExpr{})
+        = operated op (operated Plus e1 e3) e2
+    moveLiterals op e1@LiteralExpr{} (Operated Minus e2@LiteralExpr{} e3)
+        = operated op e3 (operated Minus e2 e1)
+    -- e1 >=< e2 + e3 === e1 - e3 >=< e2 === e1 - e2 >=< e3
+    moveLiterals op e1@LiteralExpr{} (Operated Plus e2 e3@LiteralExpr{})
+        = operated op (operated Minus e1 e3) e2
+    moveLiterals op e1@LiteralExpr{} (Operated Plus e2@LiteralExpr{} e3)
+        = operated op (operated Minus e1 e2) e3
+    moveLiterals op e1 e2 = Operated op e1 e2
 
     -- Get rid of all forall quantifiers in the front of the expression
     stripForall :: Predicate -> Predicate

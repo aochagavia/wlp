@@ -63,6 +63,9 @@ rightInfinite n = RangeInt [(Bounded n, MaxInfinite)]
 bounded :: Int -> Int -> Range
 bounded low up = RangeInt [(Bounded low, Bounded up)]
 
+exclude :: Int -> Range
+exclude i = RangeInt [(MinInfinite, Bounded (i-1)), (Bounded (i+1), MaxInfinite)]
+
 unionRange :: Range -> Range -> Range
 unionRange (RangeBool b1) (RangeBool b2) = RangeBool $ Set.union b1 b2
 unionRange (RangeInt r1) (RangeInt r2) = RangeInt $ unionIntRange r1 r2
