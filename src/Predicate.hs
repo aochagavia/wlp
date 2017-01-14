@@ -20,42 +20,81 @@ type AssignMap = Map.Map AsgTarget Range
 -- functions to calculate a range for each free variable in which this is the case.
 -- Of course, this is basically SAT, so we will allow certain trivial cases when
 -- the expression gets too complicated to easily reduce.
-nonTrivTrue :: Predicate -> Map.Map AsgTarget Range
-nonTrivTrue (NameExpr name) = Map.singleton (NameTarget name) rFalse -- We got here through boolean operators, so it must be a boolean
-nonTrivTrue (Negation p) = nonTrivFalse p
-nonTrivTrue (Operated Implies p q) = nonTrivFalse p `intersectRanges` nonTrivTrue q
-nonTrivTrue (Operated Wedge p q) = nonTrivTrue p `unionRanges` nonTrivTrue q
-nonTrivTrue (Operated Vee p q) = nonTrivTrue p `intersectRanges` nonTrivTrue q
-nonTrivTrue (Operated _ _ _) = Map.empty -- We could go deeper but let's use the default.
-nonTrivTrue _ = Map.empty -- TODO: find some other cases to cover
+nonTrivRange :: Bool -> Predicate -> AssignMap
+nonTrivRange bool (NameExpr name)
+    = Map.singleton (NameTarget name) $ RangeBool $ Set.singleton bool
+        -- We got here through boolean operators, so it must be a boolean
+nonTrivRange bool (Index (NameExpr array) i)
+    = Map.singleton (ArrTarget array i) $ RangeBool $ Set.singleton bool
 
--- |Find a range for the variables that excludes assignments that make it trivially false.
--- See 'nonTrivTrue' for the reasoning.
-nonTrivFalse :: Predicate -> Map.Map AsgTarget Range
-nonTrivFalse (NameExpr name) = Map.singleton (NameTarget name) rTrue -- We got here through boolean operators, so it must be a boolean
-nonTrivFalse (Negation p) = nonTrivTrue p
-nonTrivFalse (Operated Implies p q) = nonTrivTrue p `unionRanges` nonTrivFalse q
-nonTrivFalse (Operated Wedge p q) = nonTrivFalse p `intersectRanges` nonTrivFalse q
-nonTrivFalse (Operated Vee p q) = nonTrivFalse p `unionRanges` nonTrivFalse q
--- TODO: the same for indexing
-nonTrivFalse (Operated LessThan (NameExpr n) (LiteralExpr (LiteralInt i)))
-    = Map.singleton (NameTarget n) $ leftInfinite $ i-1
-nonTrivFalse (Operated LessThan (LiteralExpr (LiteralInt i)) (NameExpr n))
-    = Map.singleton (NameTarget n) $ rightInfinite $ i+1
-nonTrivFalse (Operated LessEqual (NameExpr n) (LiteralExpr (LiteralInt i)))
-    = Map.singleton (NameTarget n) $ leftInfinite i
-nonTrivFalse (Operated LessEqual (LiteralExpr (LiteralInt i)) (NameExpr n))
+nonTrivRange bool (Negation p) = nonTrivRange (not bool) p
+
+nonTrivRange True (Operated Implies p q)
+    = nonTrivRange False p `intersectRanges` nonTrivRange True q
+nonTrivRange False (Operated Implies p q)
+    = nonTrivRange True p `unionRanges` nonTrivRange False q
+nonTrivRange True (Operated Wedge p q)
+    = nonTrivRange True p `unionRanges` nonTrivRange True q
+nonTrivRange True (Operated Vee p q)
+    = nonTrivRange True p `intersectRanges` nonTrivRange True q
+nonTrivRange False (Operated Wedge p q)
+    = nonTrivRange False p `intersectRanges` nonTrivRange False q
+nonTrivRange False (Operated Vee p q)
+    = nonTrivRange False p `unionRanges` nonTrivRange False q
+
+nonTrivRange True (Operated LessThan (NameExpr n) (LiteralExpr (LiteralInt i)))
     = Map.singleton (NameTarget n) $ rightInfinite i
-nonTrivFalse (Operated Equal (LiteralExpr (LiteralInt i)) (NameExpr n))
+nonTrivRange True (Operated LessThan (LiteralExpr (LiteralInt i)) (NameExpr n))
+    = Map.singleton (NameTarget n) $ leftInfinite i
+nonTrivRange True (Operated LessEqual (NameExpr n) (LiteralExpr (LiteralInt i)))
+    = Map.singleton (NameTarget n) $ rightInfinite $ i + 1
+nonTrivRange True (Operated LessEqual (LiteralExpr (LiteralInt i)) (NameExpr n))
+    = Map.singleton (NameTarget n) $ leftInfinite $ i - 1
+-- The same as above but for indexing
+nonTrivRange True (Operated LessThan (Index (NameExpr n) e) (LiteralExpr (LiteralInt i)))
+    = Map.singleton (ArrTarget n e) $ rightInfinite i
+nonTrivRange True (Operated LessThan (LiteralExpr (LiteralInt i)) (Index (NameExpr n) e))
+    = Map.singleton (ArrTarget n e) $ leftInfinite i
+nonTrivRange True (Operated LessEqual (Index (NameExpr n) e) (LiteralExpr (LiteralInt i)))
+    = Map.singleton (ArrTarget n e) $ rightInfinite $ i + 1
+nonTrivRange True (Operated LessEqual (LiteralExpr (LiteralInt i)) (Index (NameExpr n) e))
+    = Map.singleton (ArrTarget n e) $ leftInfinite $ i - 1
+nonTrivRange True (Operated Equal (LiteralExpr (LiteralInt i)) (Index (NameExpr n) e))
+    = Map.singleton (ArrTarget n e) $ bounded i i
+nonTrivRange True (Operated Equal (Index (NameExpr n) e) (LiteralExpr (LiteralInt i)))
+    = Map.singleton (ArrTarget n e) $ bounded i i
+
+nonTrivRange False (Operated LessThan (NameExpr n) (LiteralExpr (LiteralInt i)))
+    = Map.singleton (NameTarget n) $ leftInfinite $ i-1
+nonTrivRange False (Operated LessThan (LiteralExpr (LiteralInt i)) (NameExpr n))
+    = Map.singleton (NameTarget n) $ rightInfinite $ i+1
+nonTrivRange False (Operated LessEqual (NameExpr n) (LiteralExpr (LiteralInt i)))
+    = Map.singleton (NameTarget n) $ leftInfinite i
+nonTrivRange False (Operated LessEqual (LiteralExpr (LiteralInt i)) (NameExpr n))
+    = Map.singleton (NameTarget n) $ rightInfinite i
+nonTrivRange False (Operated Equal (LiteralExpr (LiteralInt i)) (NameExpr n))
     = Map.singleton (NameTarget n) $ bounded i i
-nonTrivFalse (Operated Equal (NameExpr n) (LiteralExpr (LiteralInt i)))
+nonTrivRange False (Operated Equal (NameExpr n) (LiteralExpr (LiteralInt i)))
     = Map.singleton (NameTarget n) $ bounded i i
-nonTrivFalse (Operated _ _ _) = Map.empty -- We could go deeper but let's use the default.
-nonTrivFalse _ = Map.empty -- TODO: find some other cases to cover
+-- The same as above but for indexing
+nonTrivRange False (Operated LessThan (Index (NameExpr n) e) (LiteralExpr (LiteralInt i)))
+    = Map.singleton (ArrTarget n e) $ leftInfinite $ i-1
+nonTrivRange False (Operated LessThan (LiteralExpr (LiteralInt i)) (Index (NameExpr n) e))
+    = Map.singleton (ArrTarget n e) $ rightInfinite $ i+1
+nonTrivRange False (Operated LessEqual (Index (NameExpr n) e) (LiteralExpr (LiteralInt i)))
+    = Map.singleton (ArrTarget n e) $ leftInfinite i
+nonTrivRange False (Operated LessEqual (LiteralExpr (LiteralInt i)) (Index (NameExpr n) e))
+    = Map.singleton (ArrTarget n e) $ rightInfinite i
+nonTrivRange False (Operated Equal (LiteralExpr (LiteralInt i)) (Index (NameExpr n) e))
+    = Map.singleton (ArrTarget n e) $ bounded i i
+nonTrivRange False (Operated Equal (Index (NameExpr n) e) (LiteralExpr (LiteralInt i)))
+    = Map.singleton (ArrTarget n e) $ bounded i i
+
+nonTrivRange _ _ = Map.empty -- TODO: find some other cases to cover
 
 -- |Give infinite range to free variables without a range
 -- We need a type to handle the case where the expression is a single name
-defaultInfinite :: Type -> Expression -> Map.Map AsgTarget Range -> Map.Map AsgTarget Range
+defaultInfinite :: Type -> Expression -> Map.Map AsgTarget Range -> AssignMap
 defaultInfinite ty expr rangeHavers = rangeHavers `Map.union` fullRange ty expr
 
 -- |Give all free variables an infinite range, using the type of the expression

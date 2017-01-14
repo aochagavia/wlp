@@ -116,7 +116,7 @@ testPredicate pred = checkCase
     instantiations :: Gen (Map.Map AsgTarget Literal)
     instantiations = mapM rangeToGen ranges
     ranges :: Map.Map AsgTarget Range
-    ranges = defaultInfinite bool pred $ nonTrivTrue pred
+    ranges = defaultInfinite bool pred $ nonTrivRange True pred
 
     rangeToGen :: Range -> Gen Literal
     rangeToGen (RangeInt r) = LiteralInt <$> rangeToGenI r
