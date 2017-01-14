@@ -88,6 +88,25 @@ paths n (Program _ _ s) = map fst $ paths' n s
         (path, length) <- paths' n stmt
         return (Var vars path, length)
 
+-- |Convert a range of values to a QuickCheck generator.
+rangeToGen :: Range -> Gen Literal
+rangeToGen (RangeInt r) = LiteralInt <$> rangeToGenI r
+    where
+    rangeToGenI :: IntRange -> Gen Int
+    rangeToGenI range = oneof $ map intervalToGenI range
+    intervalToGenI :: Interval -> Gen Int
+    intervalToGenI (MinInfinite, MaxInfinite) = arbitrary :: Gen Int
+    intervalToGenI (MinInfinite, Bounded upper) = sized (\size ->
+        choose (upper - size, upper))
+    intervalToGenI (Bounded lower, MaxInfinite) = sized (\size ->
+        choose (lower, lower + size))
+    intervalToGenI (Bounded lower, Bounded upper) = elements [lower .. upper]
+rangeToGen (RangeBool r) = LiteralBool <$> rangeToGenB r
+    where
+    rangeToGenB :: BoolRange -> Gen Bool
+    rangeToGenB = elements . Set.toList
+rangeToGen (RangeArray r) = pure $ LiteralArray r
+
 -- |Instantiate the free variables of a predicate and check that it holds.
 -- Uses 'Gen' to convert ranges of acceptable values to a single value.
 testPredicate :: Predicate -> Property
@@ -122,24 +141,6 @@ testPredicate pred = checkCase
     knownAliases = nonTrivAlias True pred
     allRanges :: RangeMap
     allRanges = defaultInfinite bool pred $ nonTrivRange True pred
-
-    rangeToGen :: Range -> Gen Literal
-    rangeToGen (RangeInt r) = LiteralInt <$> rangeToGenI r
-    rangeToGen (RangeBool r) = LiteralBool <$> rangeToGenB r
-    rangeToGen (RangeArray r) = pure $ LiteralArray r
-
-    rangeToGenI :: IntRange -> Gen Int
-    rangeToGenI range = oneof $ map intervalToGenI range
-
-    intervalToGenI :: Interval -> Gen Int
-    intervalToGenI (MinInfinite, MaxInfinite) = arbitrary :: Gen Int
-    intervalToGenI (MinInfinite, Bounded upper) = sized (\size ->
-        choose (upper - size, upper))
-    intervalToGenI (Bounded lower, MaxInfinite) = sized (\size ->
-        choose (lower, lower + size))
-    intervalToGenI (Bounded lower, Bounded upper) = elements [lower .. upper]
-    rangeToGenB :: BoolRange -> Gen Bool
-    rangeToGenB = elements . Set.toList
 
 -- |Use QuickCheck to test each path through the program up to a given length.
 wlpCheck :: String -> Program -> Int -> IO Result

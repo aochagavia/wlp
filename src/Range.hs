@@ -147,14 +147,17 @@ unionAliases = Map.foldlWithKey insertAliases
 -- Ranges should contain all the keys of aliases.
 -- Will alias each value to the maximum of all its aliases.
 -- If there is no alias greater than itself, will use the range for that value.
-unionAliasRange :: Ord k => Map.Map k v -> AliasMap' k -> Map.Map k (Either v k)
+unionAliasRange :: Ord k => RangeMap' k -> AliasMap' k -> Map.Map k (Either Range k)
 unionAliasRange ranges aliases = Map.foldlWithKey tryAlias Map.empty ranges
     where
+    intersectLeftRange (Left r1) (Left r2) = Left $ intersectRange r1 r2
+    insertRange k v map = Map.insertWith intersectLeftRange k (Left v) map
     tryAlias map key range = case Map.lookup key aliases >>= Set.lookupMax of
-        Nothing -> Map.insert key (Left range) map
+        Nothing -> insertRange key range map -- not an alias, so continue
         Just maximum -> if key < maximum -- so we don't get cycles of aliases
-            then Map.insert key (Right maximum) map
-            else Map.insert key (Left range) map
+            then Map.insert key (Right maximum) $ -- also intersect the range
+                insertRange maximum range map
+            else insertRange key range map
 
 -- |Copy the values to each alias.
 -- The original of each alias should be an element of the map.
