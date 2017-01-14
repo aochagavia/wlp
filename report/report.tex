@@ -212,11 +212,12 @@ relatively simple cases.
 As an example, let us consider the ranges that would be generated for the following WLP
 expression:
 
-\[ (0 \leq k \leq 10) \land q \Rightarrow q \]
+\[ ((0 \leq k \leq 10) \wedge (x = y) \wedge p) \Rightarrow q \]
 
-It is clear that we want to generate a $k$ in the range $[0, 10]$ and a $q$
-that is \texttt{True}. In any other case, the left side of the implication cannot
-be true and the whole expression will trivially evaluate to \texttt{True}.
+It is clear that we want to generate a $k$ in the range $[0, 10]$, the value of
+$x$ to be equal to $y$ and a $p$ that is \texttt{True}. In any other case, the
+left side of the implication cannot be true and the whole expression will
+trivially evaluate to \texttt{True}.
 
 From the ranges we have constructed for the variables, we make QuickCheck
 generators that generate values in the corresponding ranges. If the range turns
