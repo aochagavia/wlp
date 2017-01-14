@@ -12,6 +12,30 @@ literalToBool :: Literal -> Bool
 literalToBool (LiteralBool b) = b
 literalToBool _ = error "TypeError: can't convert non-bool to bool"
 
+-- |Encodes the catamorphisms of a Statement
+type StatementAlgebra a =
+    ( a -- Skip
+    , Expression -> a -- Assert
+    , Expression -> a -- Assume
+    , AsgTargets -> Expressions -> a -- Assign
+    , a -> a -> a -- Sequence
+    , Expression -> a -> a -> a -- If
+    , Expression -> a -> a -- While
+    , Variables -> a -> a -- Var
+    , Program -> AsgTargets -> Expressions -> a -- ProgramCall
+    )
+foldStatement :: StatementAlgebra a -> Statement -> a
+foldStatement (skip, assert, assume, assign, sequence, if_, while, var, program) = fold' where
+    fold' Skip = skip
+    fold' (Assert e) = assert e
+    fold' (Assume e) = assume e
+    fold' (Assign ts es) = assign ts es
+    fold' (Sequence s1 s2) = sequence (fold' s1) (fold' s2)
+    fold' (If c t e) = if_ c (fold' t) (fold' e)
+    fold' (While c b) = while c (fold' b)
+    fold' (Var vs b) = var vs (fold' b)
+    fold' (ProgramCall p ts es) = program p ts es
+
 -- |Encodes the catamorphisms of an Expression
 type ExpressionAlgebra a =
     ( Literal -> a -- LiteralExpr

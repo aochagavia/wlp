@@ -112,6 +112,8 @@ data Statement
         -- TODO: include an invariant here?
     | Var Variables Statement
         -- ^Local variable declaration
+    | ProgramCall Program AsgTargets Expressions
+        -- ^Call a program with a given list of arguments and store the results
     deriving (Eq, Ord, Show)
 
 -- |A bit of code that calculates a value.
@@ -193,6 +195,9 @@ while cond body = While cond $ foldSequence body
 -- |A datatype-agnostic way to write the constructor.
 var :: [(Name, Type)] -> [Statement] -> Statement
 var vars stmts = Var (toVariables vars) $ foldSequence stmts
+-- |Call a program with a set of arguments.
+call :: [Name] -> Program -> [Expression] -> Statement
+call names program = ProgramCall program $ map NameTarget names
 
 -- |An integer literal.
 i :: Int -> Expression

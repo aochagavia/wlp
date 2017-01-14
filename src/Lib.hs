@@ -43,10 +43,10 @@ wlp' (Sequence stmt1 stmt2) q = wlp' stmt1 $ wlp' stmt2 q
 wlp' (Assert condition) q = condition /\. q
 wlp' (Assume condition) q = condition =>. q
 -- Local variables get renamed so they don't clash with those in the condition
-wlp' (Var vars stmt) q = wlp' (refresh currentFree stmt) q
+wlp' (Var vars stmt) q = wlp' stmt q
     where
     currentFree :: Set.Set Name
-    currentFree = Set.fromList $ map toName vars
+    currentFree = Set.map toName $ freeVars q
 -- Note that we don't expect while or if statements to be present in the path,
 -- since they have just been desugared
 wlp' stmt q = error $ "Statement " ++ show stmt ++ " has no wlp defined!"
@@ -87,6 +87,20 @@ paths n (Program _ _ s) = map fst $ paths' n s
     paths' n (Var vars stmt) = do
         (path, length) <- paths' n stmt
         return (Var vars path, length)
+    -- Interpret a program call via inlining.
+    -- This should also handle recursive calls since Haskell is lazy.
+    paths' n (ProgramCall (Program params returns code) resultAsgs args)
+        = paths' n $ Var locals inlined
+        where
+        assumeToAssert = foldStatement (Skip, Assume, Assert, Assign, Sequence,
+            If, While, Var, ProgramCall)
+        locals = map (flip Variable int . toName) $ Set.toList $ freeVars inlined
+        inlined =
+            Assign (map (NameTarget . toName) params) args `Sequence`
+            -- We also need to check that our call meets the preconditions
+            -- and that the postcondition has already been checked.
+            assumeToAssert code `Sequence`
+            Assign resultAsgs (map (ref . toName) returns)
 
 -- |Convert a range of values to a QuickCheck generator.
 rangeToGen :: Range -> Gen Literal

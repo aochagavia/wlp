@@ -101,7 +101,7 @@ prop_localVarsWork = once $ p === expectedP
     where
     q = ref "y" <. i 0
     p = wlp overwriteLocalVar q
-    expectedP = ref "x" <. i 0
+    expectedP = ref "x1" <. i 0
 
 -- |The example program E from the assignment
 exampleProgram :: Program
@@ -208,6 +208,7 @@ swapWrong = program [("a", Array IntType), ("i", int), ("j", int)] [("a'", Array
 swapIsWrong :: IO Result
 swapIsWrong = wlpCheck "swap" swapWrong 10
 
+-- |A program that doesn't work but is very hard to prove.
 findNonzeroWrong :: Program
 findNonzeroWrong = program [("a", Array IntType)] [("i", int)] [
         assume $ neg $ forall "j" int $ ("a" !!. ref "j") ==. i 0,
@@ -232,6 +233,23 @@ findNonzero = program [("a", Array IntType)] [("i", int)] [
 
 findNonzeroWorks :: IO Result
 findNonzeroWorks = wlpCheck "findNonzero" findNonzero 20
+
+sort :: Program
+sort = program [("a", Array IntType), ("N", int)] [("a'", Array IntType)] [
+        assume $ ref "N" >=. i 0,
+        var [("i", int)] [
+            assignN ["i"] [i 0],
+            while (ref "i" <. (ref "N" -. i 1)) [
+                call ["m"] minind [ref "a", ref "i" +. i 1, ref "N"],
+                if_ (("a" !!. ref "m") <. ("a" !!. ref "i")) [
+                    call ["a"] swap [ref "a", ref "i", ref "m"]
+                ] []
+            ]
+        ],
+        assignN ["a'"] [ref "a"],
+        assert $ forall "i" int $ ((i 0 <=. ref "i") /\. (ref "i" <. (ref "N" -. i 1))) =>.
+            (("a" !!. ref "i") <=. ("a" !!. (ref "i" +. i 1)))
+    ]
 
 -- |Represents parts of expressions that have an explicit type.
 class ArbitraryTyped a where

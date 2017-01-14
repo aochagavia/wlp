@@ -8,6 +8,8 @@ import Syntax
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 
+import Debug.Trace
+
 -- |Of course, there are expressions that aren't predicates but we're all very smart people so that won't happen.
 type Predicate = Expression
 
@@ -190,6 +192,9 @@ normalize = stripForall . prenex' . normalize'
     normalize' = foldExpression (LiteralExpr, NameExpr, operated, negation, Index, Repby, Forall)
     -- | ~ ~ a === a
     negation (Negation exp) = exp
+    -- ~(x < y) = x >= y
+    negation (Operated LessThan e1 e2) = operated LessEqual e2 e1
+    negation (Operated LessEqual e1 e2) = operated LessThan e2 e1
     negation exp = Negation exp
     -- Evaluate as much as possible.
     operated op (LiteralExpr l1) (LiteralExpr l2) = LiteralExpr $ operate op l1 l2

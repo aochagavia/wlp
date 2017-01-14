@@ -69,6 +69,8 @@ instance FreeVars Expression where
     freeVars (Operated _ expr1 expr2) = freeVars expr1 `Set.union` freeVars expr2
     freeVars (Negation expr) = freeVars expr
     freeVars (Index arr expr) = freeVars arr `Set.union` freeVars expr
+    freeVars (Repby arr index expr)
+        = freeVars arr `Set.union` freeVars index `Set.union` freeVars expr
     freeVars (Forall var expr) = makeBound var $ freeVars expr
 
     replace (LiteralExpr l) _ = LiteralExpr l
