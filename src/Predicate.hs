@@ -12,7 +12,11 @@ import qualified Data.Set as Set
 type Predicate = Expression
 
 -- |Map variables and array indices to the range of values they can take.
-type AssignMap = Map.Map AsgTarget Range
+type RangeMap = Map.Map AsgTarget Range
+-- |Map variables and array indices to the others they are equal to.
+type AliasMap = Map.Map AsgTarget (Set.Set AsgTarget)
+-- |Map variables and array indices to their aliases or a range.
+type RangeAliasMap = Map.Map AsgTarget (Either Range AsgTarget)
 
 -- |We want to exclude trivially true predicates when we want to check them.
 -- However, this is not as easy as it sounds: when we're testing an implication,
@@ -20,7 +24,7 @@ type AssignMap = Map.Map AsgTarget Range
 -- functions to calculate a range for each free variable in which this is the case.
 -- Of course, this is basically SAT, so we will allow certain trivial cases when
 -- the expression gets too complicated to easily reduce.
-nonTrivRange :: Bool -> Predicate -> AssignMap
+nonTrivRange :: Bool -> Predicate -> RangeMap
 nonTrivRange bool (NameExpr name)
     = Map.singleton (NameTarget name) $ RangeBool $ Set.singleton bool
         -- We got here through boolean operators, so it must be a boolean
@@ -92,13 +96,41 @@ nonTrivRange False (Operated Equal (Index (NameExpr n) e) (LiteralExpr (LiteralI
 
 nonTrivRange _ _ = Map.empty -- TODO: find some other cases to cover
 
+-- |Determine which variables have to have identical values when we want to
+-- avoid trivially true (or false) instantiations.
+nonTrivAlias :: Bool -> Predicate -> AliasMap
+nonTrivAlias bool (Negation p)
+    = nonTrivAlias (not bool) p
+nonTrivAlias True (Operated Implies p q)
+    = nonTrivAlias False p `unionAliases` nonTrivAlias True q
+nonTrivAlias False (Operated Implies p q)
+    = nonTrivAlias True p `intersectAliases` nonTrivAlias False q
+nonTrivAlias True (Operated Vee p q)
+    = nonTrivAlias True p `unionAliases` nonTrivAlias True q
+nonTrivAlias False (Operated Vee p q)
+    = nonTrivAlias False p `intersectAliases` nonTrivAlias False q
+nonTrivAlias True (Operated Wedge p q)
+    = nonTrivAlias True p `intersectAliases` nonTrivAlias True q
+nonTrivAlias False (Operated Wedge p q)
+    = nonTrivAlias False p `unionAliases` nonTrivAlias False q
+nonTrivAlias False (Operated Equal (NameExpr n1) (NameExpr n2))
+    -- avoid duplicate entries
+    | n1 /= n2 = symmetrical (NameTarget n1) (NameTarget n2)
+nonTrivAlias False (Operated Equal (NameExpr n1) (Index (NameExpr n2) e))
+    | n1 /= n2 = symmetrical (NameTarget n1) (ArrTarget n2 e)
+nonTrivAlias False (Operated Equal (Index (NameExpr n1) e) (NameExpr n2))
+    | n1 /= n2 = symmetrical (ArrTarget n1 e) (NameTarget n2)
+nonTrivAlias False (Operated Equal (Index (NameExpr n1) e1) (Index (NameExpr n2) e2))
+    | (n1, e1) /= (n2, e2) = symmetrical (ArrTarget n1 e1) (ArrTarget n2 e2)
+nonTrivAlias _ _ = Map.empty -- TODO: find some other cases to cover
+
 -- |Give infinite range to free variables without a range
 -- We need a type to handle the case where the expression is a single name
-defaultInfinite :: Type -> Expression -> Map.Map AsgTarget Range -> AssignMap
+defaultInfinite :: Type -> Expression -> RangeMap -> RangeMap
 defaultInfinite ty expr rangeHavers = rangeHavers `Map.union` fullRange ty expr
 
 -- |Give all free variables an infinite range, using the type of the expression
-fullRange :: Type -> Expression -> Map.Map AsgTarget Range
+fullRange :: Type -> Expression -> RangeMap
 fullRange ty expr = fullRangeFor <$> typeInferExpr ty expr
 
 fullRangeFor :: Type -> Range

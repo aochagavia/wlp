@@ -114,9 +114,14 @@ testPredicate pred = checkCase
             Right result -> ArrTarget arr $ LiteralExpr $ result
 
     instantiations :: Gen (Map.Map AsgTarget Literal)
-    instantiations = mapM rangeToGen ranges
-    ranges :: Map.Map AsgTarget Range
-    ranges = defaultInfinite bool pred $ nonTrivRange True pred
+    instantiations = copyAliases aliases <$> rangeInstantiations
+    rangeInstantiations :: Gen (Map.Map AsgTarget Literal)
+    rangeInstantiations = mapM rangeToGen ranges
+    (ranges, aliases) = Map.mapEither id $ allRanges `unionAliasRange` knownAliases
+    knownAliases :: AliasMap
+    knownAliases = nonTrivAlias True pred
+    allRanges :: RangeMap
+    allRanges = defaultInfinite bool pred $ nonTrivRange True pred
 
     rangeToGen :: Range -> Gen Literal
     rangeToGen (RangeInt r) = LiteralInt <$> rangeToGenI r

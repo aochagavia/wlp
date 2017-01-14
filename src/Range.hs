@@ -96,3 +96,70 @@ intersectRange _ _ = error "Called intersectRange with incompatible ranges"
 unionRanges, intersectRanges :: Ord k => Map.Map k Range -> Map.Map k Range -> Map.Map k Range
 unionRanges = Map.intersectionWith unionRange
 intersectRanges = Map.unionWith intersectRange
+
+type RangeMap' k = Map.Map k Range
+type AliasMap' k = Map.Map k (Set.Set k)
+
+-- |Alias the first key to the second key and the other way around.
+symmetrical :: Ord k => k -> k -> AliasMap' k
+symmetrical k1 k2 = Map.fromList [(k1, Set.singleton k2), (k2, Set.singleton k1)]
+
+-- |Takes two AliasMaps that are symmetrical and transitive, and makes a
+-- symmetrical and transitive intersection/union.
+intersectAliases, unionAliases :: Ord k => AliasMap' k -> AliasMap' k -> AliasMap' k
+intersectAliases = Map.intersectionWith Set.intersection
+-- Note that this case is a lot trickier to make the intersection very simple.
+unionAliases = Map.foldlWithKey insertAliases
+    where
+    -- Insert a new or existing key in the map.
+    -- If the key is already in the map, takes the union.
+    -- Does not ensure the map is symmetrical or transitive!
+    insertKey :: Ord k => k -> Set.Set k -> AliasMap' k -> AliasMap' k
+    insertKey key new map = case Map.lookup key map of
+        Nothing -> Map.insert key new map
+        Just existing -> Map.insert key (Set.union new existing) map
+    -- Perform insertKey (Set.singleton k) for all x in the set.
+    insertAll :: Ord k => Set.Set k -> k -> AliasMap' k -> AliasMap' k
+    insertAll set k map = Set.fold (\x -> insertKey x (Set.singleton k)) map set
+    -- Insert a new alias in the map.
+    -- The map will remain symmetrical and transitive.
+    insertAlias :: Ord k => AliasMap' k -> k -> k -> AliasMap' k
+    insertAlias map k1 k2 = insertKey k1 (Set.singleton k2) $
+        insertKey k2 (Set.singleton k2) $
+        (case Map.lookup k1 map of
+            -- which also implies that no x has x R k1
+            Nothing -> id
+            -- (x R k1) <-> (k1 R x), so we also want k2 R x and x R k2
+            Just related1 -> insertKey k2 related1 . insertAll related1 k2
+        ) $
+        (case Map.lookup k2 map of
+            -- which also implies that no x has x R k2
+            Nothing -> id
+            -- (x R k2) <-> (k2 R x), so we also want k1 R x and x R k1
+            Just related2 -> insertKey k1 related2 . insertAll related2 k1
+        ) $
+        map
+    insertAliases :: Ord k => AliasMap' k -> k -> Set.Set k -> AliasMap' k
+    insertAliases map k1 k2s = Set.fold (\k2 map -> insertAlias map k1 k2) map k2s
+
+-- |Given a map of keys to ranges, and a map of keys that alias other keys,
+-- determine the full amount of aliases and ranges.
+-- Ranges should contain all the keys of aliases.
+-- Will alias each value to the maximum of all its aliases.
+-- If there is no alias greater than itself, will use the range for that value.
+unionAliasRange :: Ord k => Map.Map k v -> AliasMap' k -> Map.Map k (Either v k)
+unionAliasRange ranges aliases = Map.foldlWithKey tryAlias Map.empty ranges
+    where
+    tryAlias map key range = case Map.lookup key aliases >>= Set.lookupMax of
+        Nothing -> Map.insert key (Left range) map
+        Just maximum -> if key < maximum -- so we don't get cycles of aliases
+            then Map.insert key (Right maximum) map
+            else Map.insert key (Left range) map
+
+-- |Copy the values to each alias.
+-- The original of each alias should be an element of the map.
+copyAliases :: Ord k => Map.Map k k -> Map.Map k v -> Map.Map k v
+copyAliases aliases values = Map.foldlWithKey copyAlias values aliases
+    where
+    copyAlias :: Ord k => Map.Map k v -> k -> k -> Map.Map k v
+    copyAlias values' alias original = Map.insert alias (values' Map.! original) values'
