@@ -13,9 +13,10 @@ import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Test.QuickCheck
 
--- |Calculate the wlp of a program based on the given postcondition
+-- |Calculate the wlp of a program based on the given postcondition.
+-- Usually, you would want to use wlpCheck since it can verify the wlp holds.
 wlp :: Program -> Expression -> Expression
-wlp (Program _ _ s) = wlp' s -- TODO: recursion requires that we store this value somewhere
+wlp (Program _ _ _ s) = wlp' s
 
 -- | Calculate the wlp of a statement based on the given postcondition
 wlp' :: Statement -> Expression -> Expression
@@ -60,7 +61,7 @@ wlpPath stmt = wlp' stmt $ b True
 -- |Find all paths through the program up to the given length.
 -- Note that by length we apparently mean the number of 'Sequence's in the statement.
 paths :: Int -> Program -> [Statement]
-paths n (Program _ _ s) = map fst $ paths' n s
+paths n (Program _ _ _ s) = map fst $ paths' n s
     where
     -- Enumerate all paths through a compound statement, returning the path and length.
     paths' :: Int -> Statement -> [(Statement, Int)]
@@ -89,17 +90,18 @@ paths n (Program _ _ s) = map fst $ paths' n s
         return (Var vars path, length)
     -- Interpret a program call via inlining.
     -- This should also handle recursive calls since Haskell is lazy.
-    paths' n (ProgramCall (Program params returns code) resultAsgs args)
+    paths' n (ProgramCall (Program _ params returns code) resultAsgs args)
         = paths' n $ Var locals inlined
         where
-        assumeToAssert = foldStatement (Skip, Assume, Assert, Assign, Sequence,
-            If, While, Var, ProgramCall)
+        dropConditions = foldStatement (Skip, const Skip, const Skip, Assign,
+            Sequence, If, While, Var, ProgramCall)
         locals = map (flip Variable int . toName) $ Set.toList $ freeVars inlined
         inlined =
             Assign (map (NameTarget . toName) params) args `Sequence`
-            -- We also need to check that our call meets the preconditions
-            -- and that the postcondition has already been checked.
-            assumeToAssert code `Sequence`
+            -- Note that we can't use the pre-/postconditions since we need to
+            -- satisfy them, not use them! (Also, they might contain free
+            -- variables that we don't want to get bound.)
+            dropConditions code `Sequence`
             Assign resultAsgs (map (ref . toName) returns)
 
 -- |Convert a range of values to a QuickCheck generator.
@@ -192,20 +194,36 @@ testPredicate basePredicate
         value <- rangeToGen $ fullRangeFor ty
         let makeInstantiation = Map.insert (NameTarget name) value
         let instantiation' = makeInstantiation <$> instantiation
-        result <- checkPredicate instantiation'
-        return $ case q of
-            ForAll -> case result of
-                res@NoCases{} -> SuccessForall pred
-                res@SuccessForall{} -> SuccessForall pred
-                res@SuccessExists{} -> SuccessForall pred
-                res@(Counterexample _ inst') -> Counterexample pred inst'
-                res@NoExample{} -> NoExample pred
-            Exists -> case result of
-                res@NoCases{} -> NoExample pred
-                res@SuccessForall{} -> SuccessForall pred
-                res@(SuccessExists _ inst') -> SuccessExists pred $ makeInstantiation inst'
-                res@(Counterexample _ inst') -> NoExample pred
-                res@NoExample{} -> NoExample pred
+        results <- replicateM 100 $ checkPredicate instantiation'
+        return $ quantifyResults q pred makeInstantiation results
+
+    -- |Collect the results for a single quantifier.
+    quantifyResults ForAll pred makeInst = foldr conjoin $ SuccessForall pred
+        where
+        conjoin res@NoCases{} newRes = newRes
+        conjoin res@SuccessForall{} newRes = if isSure newRes && isSuccess newRes
+            then res
+            else newRes
+        conjoin res@SuccessExists{} newRes = newRes
+        conjoin res@(Counterexample _ inst') newRes = Counterexample pred $ makeInst inst'
+        conjoin res@NoExample{} newRes = if isSuccess newRes
+            then NoExample pred
+            else newRes
+    quantifyResults Exists pred makeInst = foldr disjoin $ NoExample pred
+        where
+        disjoin res@NoCases{} newRes = if isSuccess newRes
+            then newRes
+            else NoExample pred
+        disjoin res@SuccessForall{} newRes = if isSuccess newRes && isSure newRes
+             then newRes
+             else res
+        disjoin res@(SuccessExists _ inst') newRes = res
+        disjoin res@(Counterexample _ inst') newRes = if isSuccess newRes
+            then newRes
+            else NoExample pred
+        disjoin res@NoExample{} newRes = if isSuccess newRes || isSure newRes
+            then newRes
+            else res
 
     -- Test a case with quantifiers, when it is in prenex normal form.
     -- Repeatedly strips the quantifier and makes a new test with it.
@@ -240,20 +258,23 @@ testPredicate basePredicate
     allRanges = defaultInfinite bool normalizedPredicate $ nonTrivRange True normalizedPredicate
 
 -- |Use QuickCheck to test each path through the program up to a given length.
-wlpCheck :: String -> Program -> Int -> IO CheckResult
-wlpCheck testName prog len = do
-    putStrLn $ "Testing " ++ testName
+wlpCheck :: Program -> Int -> IO CheckResult
+wlpCheck prog len = do
+    putStrLn $ "Testing " ++ name prog
     finalResult <- runTests
     if isSuccess finalResult
-    then putStrLn $ "Success!"
+    then putStrLn $ "Success! Performed " ++ show maxTests ++ " tests on " ++ show (length allPaths) ++ " paths."
     else putStrLn $ "Failed: " ++ show finalResult
     return finalResult
     where
     maxTests :: Int
     maxTests = 1000 * len
+    -- All the paths that can be tested.
+    allPaths :: [Statement]
+    allPaths = paths len prog
     -- A list of potential test cases.
     properties :: [Gen CheckResult]
-    properties = map (testPredicate . wlpPath) $ paths len prog
+    properties = map (testPredicate . wlpPath) allPaths
     -- An infinite list of test cases to run.
     -- Use runTests to run a finite amount of them.
     testsToRun :: [IO CheckResult]

@@ -15,7 +15,11 @@ type Parameters = [Variable]
 type Variables = [Variable]
 -- |Variable declaration, with 'Name' and 'Type'.
 data Variable = Variable Name Type
-    deriving (Eq, Ord, Show)
+    deriving (Eq, Ord)
+
+instance Show Variable where
+    show (Variable n t) = n ++ " : " ++ show t
+
 -- |Variable bound in a quantifier.
 type BoundVariable = Variable
 -- |Names of variables to be assigned to.
@@ -25,7 +29,12 @@ type AsgTargets = [AsgTarget]
 data AsgTarget
     = NameTarget Name
     | ArrTarget Name Expression
-    deriving (Eq, Ord, Show)
+    deriving (Eq, Ord)
+
+instance Show AsgTarget where
+    show (NameTarget n) = n
+    show (ArrTarget n expr) = n ++ "[" ++ show expr ++ "]"
+
 isNameTarget :: AsgTarget -> Bool
 isNameTarget (NameTarget _) = True
 isNameTarget _ = False
@@ -68,12 +77,20 @@ instance Show Quantifier where
 data Type
     = Primitive PrimitiveType -- ^Types that can't be reduced further.
     | Array PrimitiveType -- ^An array that can be indexed to get that type.
-    deriving (Eq, Ord, Show)
+    deriving (Eq, Ord)
+
+instance Show Type where
+    show (Primitive ty) = show ty
+    show (Array ty) = "[" ++ show ty ++ "]"
+
 -- |Types that can't be reduced further.
 data PrimitiveType
     = IntType -- ^Integer number.
     | BoolType -- ^Boolean proposition.
-    deriving (Eq, Ord, Show, Bounded, Enum)
+    deriving (Eq, Ord, Bounded, Enum)
+instance Show PrimitiveType where
+    show IntType = "int"
+    show BoolType = "bool"
 
 -- |A value of a PrimitiveType
 data Literal
@@ -91,11 +108,17 @@ instance Show Literal where
 
 -- |Can be called, somewhat like a function in imperative languages.
 data Program = Program
-    { inParams :: Parameters -- ^The parameters that are passed during call.
+    { name :: Name -- ^The program's name, used for pretty-printing.
+    , inParams :: Parameters -- ^The parameters that are passed during call.
     , outParams :: Parameters -- ^The parameters that are returned.
     , body :: Statement -- ^The code that will be called. Usually multiple statements long.
     }
-    deriving (Eq, Ord, Show)
+    deriving (Eq, Ord)
+
+instance Show Program where
+    show (Program name inParams outParams body)
+        = "def " ++ name ++ " " ++ show inParams ++ " " ++ show outParams
+            ++ block 0 body
 
 -- |A bit of code that modifies the state.
 data Statement
@@ -124,7 +147,27 @@ data Statement
         -- ^Local variable declaration
     | ProgramCall Program AsgTargets Expressions
         -- ^Call a program with a given list of arguments and store the results
-    deriving (Eq, Ord, Show)
+    deriving (Eq, Ord)
+
+indentation :: Int -> String
+indentation = flip replicate '\t'
+
+block :: Int -> Statement -> String
+block n stmt = " {\n" ++ indent (n+1) stmt ++ "\n" ++ indentation n ++ "}"
+
+indent :: Int -> Statement -> String
+indent n Skip = indentation n ++ "skip"
+indent n (Assert expr) = indentation n ++ "assert " ++ show expr
+indent n (Assume expr) = indentation n ++ "assume " ++ show expr
+indent n (Assign ts es) = indentation n ++ show ts ++ " = " ++ show es
+indent n (Sequence s1 s2) = indent n s1 ++ ";\n" ++ indent n s2
+indent n (If c t e) = indentation n ++ "if " ++ show c ++ block n t ++ " else" ++ block n e
+indent n (While c b) = indentation n ++ "while " ++ show c ++ block n b
+indent n (Var vs b) = indentation n ++ "var " ++ show vs ++ block n b
+indent n (ProgramCall p ts es) = indentation n ++ show ts ++ " = " ++ name p ++ " " ++ show es
+
+instance Show Statement where
+    show = indent 0
 
 -- |A bit of code that calculates a value.
 data Expression
@@ -147,14 +190,26 @@ data Expression
         -- You shouldn't write this expression in an actual program!
     deriving (Eq, Ord)
 
+-- |Optionally surround the string in parentheses.
+parentheses :: Bool -> String -> String
+parentheses False str = str
+parentheses True str = "(" ++ str ++ ")"
+
+-- |Make a string representation of the expression, with optional parentheses.
+pretty :: Bool -> Expression -> String
+pretty _ (LiteralExpr l) = show l
+pretty _ (NameExpr n) = n
+pretty b (Operated op ex1 ex2) = parentheses b $
+    pretty True ex1 ++ " " ++ show op ++ " " ++ pretty True ex2
+pretty _ (Negation expr) = "~" ++ pretty True expr
+pretty _ (Index arr expr) = pretty True arr ++ "[" ++ pretty False expr ++ "]"
+pretty _ (Repby arr index expr)
+    = pretty True arr ++ "[" ++ pretty False index ++ "<-" ++ pretty False expr ++ "]"
+pretty _ (Quantify q var expr)
+    = show q ++ " " ++ show var ++ " . " ++ pretty True expr
+
 instance Show Expression where
-    show (LiteralExpr l) = show l
-    show (NameExpr n) = n
-    show (Operated op ex1 ex2) = "(" ++ show ex1 ++ ") " ++ show op ++ " (" ++ show ex2 ++ ")"
-    show (Negation expr) = "~(" ++ show expr ++ ")"
-    show (Index arr expr) = "(" ++ show arr ++ ")[" ++ show expr ++ "]"
-    show (Quantify q var expr) = show q ++ " " ++ show var ++ " . " ++ show expr ++ ""
-    show (Repby var index expr) = "(" ++ show var ++ ")[" ++ show index ++ " <- " ++ show expr ++ "]"
+    show = pretty False
 
 -- *Building an AST
 -- The data types defined above are quite impractical, so let's make them easier to read.
@@ -179,8 +234,8 @@ toVariables = map makeVariable
     makeVariable = uncurry Variable
 
 -- |Define a program using a list of 'Statement's.
-program :: [(Name, Type)] -> [(Name, Type)] -> [Statement] -> Program
-program ins outs stmts = Program inParams outParams $ foldSequence stmts
+program :: Name -> [(Name, Type)] -> [(Name, Type)] -> [Statement] -> Program
+program name ins outs stmts = Program name inParams outParams $ foldSequence stmts
     where
     inParams = toVariables ins
     outParams = toVariables outs

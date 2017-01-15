@@ -8,8 +8,6 @@ import Syntax
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 
-import Debug.Trace
-
 -- |Of course, there are expressions that aren't predicates but we're all very smart people so that won't happen.
 type Predicate = Expression
 
@@ -188,7 +186,7 @@ prenex = foldExpression (LiteralExpr, NameExpr, op, neg, Index, Repby, Quantify)
 -- |Normalize a predicate to eliminate various implications and trivial truths.
 -- This isn't a full reduction but should get us far enough to generate test cases.
 normalize :: Predicate -> Predicate
-normalize = stripForall . prenex . normalize'
+normalize = normalize' . stripForall . prenex
     where
     normalize' = foldExpression (LiteralExpr, NameExpr, operated, negation, index, repby, Quantify)
     -- | ~ ~ a === a

@@ -14,7 +14,7 @@ import Test.QuickCheck
 
 -- |A program that does absolutely nothing
 void :: Program
-void = program [] [] []
+void = program "void" [] [] []
 
 prop_void :: Property
 prop_void = once $ p === q
@@ -24,7 +24,7 @@ prop_void = once $ p === q
 
 -- |A program that always returns the given Int
 intConst :: Int -> Program
-intConst n = program [] [("r", int)] [
+intConst n = program "intConst" [] [("r", int)] [
                assignN ["r"] [i n]
            ]
 
@@ -37,7 +37,7 @@ prop_intCont n = p === expectedP
 
 -- |An identity program for integers
 intId :: Program
-intId = program [("x", int)] [("r", int)] [
+intId = program "intId" [("x", int)] [("r", int)] [
             assignN ["r"] [ref "x"]
         ]
 
@@ -58,7 +58,7 @@ prop_intIdBound = once $ p === q
 -- |A program that swaps two variables
 -- Uses simultaneous assignment, so might break assignment semantics sometimes.
 swapSimultaneous :: Program
-swapSimultaneous = program [("x", int), ("y", int)] [("x", int), ("y", int)] [
+swapSimultaneous = program "swapSimultaneous" [("x", int), ("y", int)] [("x", int), ("y", int)] [
         assignN ["x", "y"] [ref "y", ref "x"]
     ]
 
@@ -72,7 +72,7 @@ prop_SwapSimultaneous = once $ p === expectedP
 
 -- |A program that includes pre- and postconditions.
 negateNumber :: Program
-negateNumber = program [("x", int)] [("y", int)] [
+negateNumber = program "negateNumber" [("x", int)] [("y", int)] [
         assume $ i (-1) <=. ref "x",
         assignN ["y"] [i 0 -. ref "x"],
         assert $ i 1 >=. ref "y"
@@ -88,7 +88,7 @@ prop_negateNumber = once $ p === expectedP
 
 -- |Overwrites a local variable but doesn't modify anything else.
 overwriteLocalVar :: Program
-overwriteLocalVar = program [("x", int)] [("y", int)] [
+overwriteLocalVar = program "overwriteLocalVar" [("x", int)] [("y", int)] [
         var [("x", int)] [
             assignN ["x"] [i 37]
         ],
@@ -105,7 +105,7 @@ prop_localVarsWork = once $ p === expectedP
 
 -- |The example program E from the assignment
 exampleProgram :: Program
-exampleProgram = program [("x", int)] [("y", int)] [
+exampleProgram = program "exampleProgram" [("x", int)] [("y", int)] [
         assume $ i (-1) <=. ref "x",
         while (i 0 <. ref "x") [ assignN ["x"] [ref "x" -. i 1]],
         assignN ["y"] [ref "x"],
@@ -125,11 +125,11 @@ prop_exampleProgramPaths = once $ foundPaths === expectedPaths
         ]
 
 exampleProgramIsWrong :: IO CheckResult
-exampleProgramIsWrong = wlpCheck "exampleProgram" exampleProgram 7
+exampleProgramIsWrong = wlpCheck exampleProgram 7
 
 -- |The example program E from the assignment, but now it works
 exampleProgramFixed :: Program
-exampleProgramFixed = program [("x", int)] [("y", int)] [
+exampleProgramFixed = program "exampleProgram" [("x", int)] [("y", int)] [
         assume $ i 0 <=. ref "x",
         while (i 0 <. ref "x") [ assignN ["x"] [ref "x" -. i 1]],
         assignN ["y"] [ref "x"],
@@ -137,12 +137,12 @@ exampleProgramFixed = program [("x", int)] [("y", int)] [
     ]
 
 exampleProgramIsFixed :: IO CheckResult
-exampleProgramIsFixed = wlpCheck "exampleProgram" exampleProgramFixed 7
+exampleProgramIsFixed = wlpCheck exampleProgramFixed 7
 
 -- |The minind program from assignment 1
 minind :: Program
-minind = program [("a", Array IntType), ("i", int), ("N", int)] [("r", int)] [
-        assume $ ref "N" >. ref "i",
+minind = program "minind" [("a", Array IntType), ("i", int), ("N", int)] [("r", int)] [
+        assume $ (ref "N" >. ref "i") /\. (ref "i" ==. ref "i'"),
         var [("min", int)] [
             assignN ["min", "r"] ["a" !!. ref "i", ref "i"],
             while (ref "i" <. ref "N") [
@@ -152,17 +152,17 @@ minind = program [("a", Array IntType), ("i", int), ("N", int)] [("r", int)] [
                 assignN ["i"] [ref "i" +. i 1]
             ]
         ],
-        assert $ forall "j" int (((ref "j" >=. ref "i") /\. (ref "j" <. ref "N")) =>.
-            (("a" !!. ref "j") <=. ("a" !!. ref "r")))
+        assert $ forall "j" int $ ((ref "j" >=. ref "i'") /\. (ref "j" <. ref "N")) =>.
+            (("a" !!. ref "j") >=. ("a" !!. ref "r"))
     ]
 
 minindWorks :: IO CheckResult
-minindWorks = wlpCheck "minind" minind 10
+minindWorks = wlpCheck minind 20
 
 -- |The minind program from assignment 1 with a broken postcondition
 minindWrong :: Program
-minindWrong = program [("a", Array IntType), ("i", int), ("N", int)] [("r", int)] [
-        assume $ ref "N" >. ref "i",
+minindWrong = program "minind" [("a", Array IntType), ("i", int), ("N", int)] [("r", int)] [
+        assume $ (ref "N" >. ref "i") /\. (ref "i" ==. ref "i'"),
         var [("min", int)] [
             assignN ["min", "r"] ["a" !!. ref "i", ref "i"],
             while (ref "i" <. ref "N") [
@@ -172,14 +172,15 @@ minindWrong = program [("a", Array IntType), ("i", int), ("N", int)] [("r", int)
                 assignN ["i"] [ref "i" +. i 1]
             ]
         ],
-        assert $ forall "j" int (("a" !!. ref "j") <=. ("a" !!. ref "r"))
+        assert $ forall "j" int $ ((ref "j" >=. ref "i'") /\. (ref "j" <. ref "N")) =>.
+            (("a" !!. ref "j") <=. ("a" !!. ref "r"))
     ]
 
 minindIsWrong :: IO CheckResult
-minindIsWrong = wlpCheck "minind" minindWrong 10
+minindIsWrong = wlpCheck minindWrong 20
 
 swap :: Program
-swap = program [("a", Array IntType), ("i", int), ("j", int)] [("a'", Array IntType)] [
+swap = program "swap" [("a", Array IntType), ("i", int), ("j", int)] [("a'", Array IntType)] [
         assume $ (("a" !!. ref "i") ==. ref "x") /\. (("a" !!. ref "j") ==. ref "y"),
         var [("tmp", int)] [
             assignN ["tmp"] ["a" !!. ref "i"],
@@ -189,12 +190,21 @@ swap = program [("a", Array IntType), ("i", int), ("j", int)] [("a'", Array IntT
         ],
         assert $ (("a'" !!. ref "j") ==. ref "x") /\. (("a'" !!. ref "i") ==. ref "y")
     ]
+swap' :: Program
+swap' = program "swap'" [("a", Array IntType), ("i", int), ("j", int)] [("a'", Array IntType)] [
+        assume $ (("a" !!. ref "i") ==. ref "x") /\. (("a" !!. ref "j") ==. ref "y"),
+        Assign [ArrTarget "a" (ref "i"), ArrTarget "a" (ref "j")] ["a" !!. ref "j", "a" !!. ref "i"],
+        assignN ["a'"] [ref "a"],
+        assert $ (("a'" !!. ref "j") ==. ref "x") /\. (("a'" !!. ref "i") ==. ref "y")
+    ]
 
 swapWorks :: IO CheckResult
-swapWorks = wlpCheck "swap" swap 10
+swapWorks = wlpCheck swap 10
+swap'Works :: IO CheckResult
+swap'Works = wlpCheck swap' 10
 
 swapWrong :: Program
-swapWrong = program [("a", Array IntType), ("i", int), ("j", int)] [("a'", Array IntType)] [
+swapWrong = program "swap" [("a", Array IntType), ("i", int), ("j", int)] [("a'", Array IntType)] [
         assume $ (("a" !!. ref "i") ==. ref "x") /\. (("a" !!. ref "j") ==. ref "y"),
         var [("tmp", int)] [
             assignN ["tmp"] ["a" !!. ref "i"],
@@ -206,20 +216,20 @@ swapWrong = program [("a", Array IntType), ("i", int), ("j", int)] [("a'", Array
     ]
 
 swapIsWrong :: IO CheckResult
-swapIsWrong = wlpCheck "swap" swapWrong 10
+swapIsWrong = wlpCheck swapWrong 10
 
 -- |A program that doesn't work but is very hard to prove.
 findNonzeroWrong :: Program
-findNonzeroWrong = program [("a", Array IntType)] [("i", int)] [
+findNonzeroWrong = program "findNonzero" [("a", Array IntType)] [("i", int)] [
         assume $ neg $ forall "j" int $ ("a" !!. ref "j") ==. i 0,
         assert $ ("a" !!. ref "j") !=. i 0
     ]
 
 findNonzeroIsWrong :: IO CheckResult
-findNonzeroIsWrong = wlpCheck "findNonzero" findNonzeroWrong 20
+findNonzeroIsWrong = wlpCheck findNonzeroWrong 20
 
 findNonzero :: Program
-findNonzero = program [("a", Array IntType)] [("i", int)] [
+findNonzero = program "findNonzero" [("a", Array IntType)] [("i", int)] [
         assume $ neg $ forall "j" int $ ("a" !!. ref "j") ==. i 0,
         while (("a" !!. ref "i") ==. i 0) [
             var [("j", int)] [
@@ -232,27 +242,27 @@ findNonzero = program [("a", Array IntType)] [("i", int)] [
     ]
 
 findNonzeroWorks :: IO CheckResult
-findNonzeroWorks = wlpCheck "findNonzero" findNonzero 20
+findNonzeroWorks = wlpCheck findNonzero 20
 
 sort :: Program
-sort = program [("a", Array IntType), ("N", int)] [("a'", Array IntType)] [
+sort = program "sort" [("a", Array IntType), ("N", int)] [("a'", Array IntType)] [
         assume $ ref "N" >=. i 0,
         var [("i", int)] [
             assignN ["i"] [i 0],
             while (ref "i" <. (ref "N" -. i 1)) [
                 call ["m"] minind [ref "a", ref "i" +. i 1, ref "N"],
                 if_ (("a" !!. ref "m") <. ("a" !!. ref "i")) [
-                    call ["a"] swap [ref "a", ref "i", ref "m"]
+                    call ["a"] swap' [ref "a", ref "i", ref "m"]
                 ] []
             ]
         ],
         assignN ["a'"] [ref "a"],
         assert $ forall "i" int $ ((i 0 <=. ref "i") /\. (ref "i" <. (ref "N" -. i 1))) =>.
-            (("a" !!. ref "i") <=. ("a" !!. (ref "i" +. i 1)))
+            (("a'" !!. ref "i") <=. ("a'" !!. (ref "i" +. i 1)))
     ]
 
 sortWorks :: IO CheckResult
-sortWorks = wlpCheck "sort" sort 20
+sortWorks = wlpCheck sort 20
 
 -- |Represents parts of expressions that have an explicit type.
 class ArbitraryTyped a where
@@ -397,5 +407,6 @@ main = do
     exampleProgramIsFixed
     minindWorks
     swapWorks
+    swap'Works
     findNonzeroWorks
     sortWorks
