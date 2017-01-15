@@ -105,6 +105,12 @@ instance FreeVars Statement where
         isStillFree :: AsgTarget -> Bool
         isStillFree (NameTarget name) = all (not . sameName name) excluded
         isStillFree (ArrTarget name _) = all (not . sameName name) excluded
+    freeVars (ProgramCall prog vars args) = Set.fromList vars `Set.union` concatMapSet freeVars args
+        where
+        -- |Equivalent to concatMap but makes a set instead of a list.
+        concatMapSet :: Ord b => (a -> Set.Set b) -> [a] -> Set.Set b
+        concatMapSet f = foldr (Set.union . f) Set.empty
+
 
     replace Skip _ = Skip
     replace (Assert expr) substs = Assert $ replace expr substs
