@@ -162,21 +162,6 @@ isSure NoExample{} = False
 instance Testable CheckResult where
     property = property . isSuccess
 
--- |Take the surest failure of all the results.
-conjunction :: [CheckResult] -> CheckResult
-conjunction = foldr findSureFailure NoCases
-    where
-    findSureFailure r1 r2 = case (isSuccess r1, isSuccess r2) of
-        (True, True) -> findSure r1 r2
-        (False, True) -> r1
-        (True, False) -> r2
-        (False, False) -> findSure r1 r2
-    findSure r1 r2 = case (isSure r1, isSure r2) of
-        (True, True) -> r1
-        (False, True) -> r1
-        (True, False) -> r2
-        (False, False) -> r1
-
 -- | The type of functions that check properties of the instantiations.
 type Checker = Gen Instantiations -> Gen CheckResult
 
@@ -281,9 +266,34 @@ wlpCheck testName prog len = do
     else putStrLn $ "Failed: " ++ show finalResult
     return finalResult
     where
+    maxTests :: Int
+    maxTests = 1000
+    -- A list of potential test cases.
     properties :: [Gen CheckResult]
     properties = map (testPredicate . wlpPath) $ paths len prog
+    -- An infinite list of test cases to run.
+    -- Use runTests to run a finite amount of them.
     testsToRun :: [IO CheckResult]
-    testsToRun = map generate $ concat $ replicateM 10 properties
+    testsToRun = map generate $ concat $ repeat properties
     runTests :: IO CheckResult
-    runTests = conjunction <$> sequence testsToRun
+    runTests = runTests' maxTests True True NoCases testsToRun
+    -- Run part of a list of test cases, exiting when we're sure of failure
+    -- or when we've covered enough cases.
+    -- This should short-circuit the cases to avoid infinite loops.
+    runTests' :: Int -> Bool -> Bool -> CheckResult -> [IO CheckResult] -> IO CheckResult
+    runTests' 0 _ _ res _ = pure res
+    runTests' _ _ _ res [] = pure res
+    runTests' _ False False res _ = pure res
+    runTests' n True True res (t:ts) = do
+        newRes <- t
+        runTests' (n-1) (isSure newRes) (isSuccess newRes) newRes ts
+    runTests' n False True res (t:ts) = do
+        newRes <- t
+        if isSuccess newRes
+        then runTests' (n-1) False True res ts
+        else runTests' (n-1) (isSure newRes) False newRes ts
+    runTests' n True False res (t:ts) = do
+        newRes <- t
+        if isSuccess newRes
+        then runTests' (n-1) True False res ts
+        else runTests' (n-1) (isSure newRes) False newRes ts
