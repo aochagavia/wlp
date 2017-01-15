@@ -190,12 +190,13 @@ prenex = foldExpression (LiteralExpr, NameExpr, op, neg, Index, Repby, Quantify)
 normalize :: Predicate -> Predicate
 normalize = stripForall . prenex . normalize'
     where
-    normalize' = foldExpression (LiteralExpr, NameExpr, operated, negation, Index, Repby, Quantify)
+    normalize' = foldExpression (LiteralExpr, NameExpr, operated, negation, index, repby, Quantify)
     -- | ~ ~ a === a
     negation (Negation exp) = exp
     -- ~(x < y) = x >= y
     negation (Operated LessThan e1 e2) = operated LessEqual e2 e1
     negation (Operated LessEqual e1 e2) = operated LessThan e2 e1
+    negation (LiteralExpr (LiteralBool bool)) = b $ not bool
     negation exp = Negation exp
     -- Evaluate as much as possible.
     operated op (LiteralExpr l1) (LiteralExpr l2) = LiteralExpr $ operate op l1 l2
@@ -220,15 +221,24 @@ normalize = stripForall . prenex . normalize'
     -- | e1 -> True === True and e1 -> False === Negation e1
     operated Implies e1 (LiteralExpr (LiteralBool True)) = b True
     operated Implies e1 (LiteralExpr (LiteralBool False)) = negation e1
-    -- | (p /\ p) === (p \/ p) === p
+    -- Handle some cases with identical values on both sides of the operators
     operated Vee e1 e2 | e1 == e2 = e1
     operated Wedge e1 e2 | e1 == e2 = e1
     operated Implies e1 e2 | e1 == e2 = b True
+    operated LessThan e1 e2 | e1 == e2 = b False
+    operated LessEqual e1 e2 | e1 == e2 = b True
+    operated Equal e1 e2 | e1 == e2 = b True
     -- Try to evaluate more of the expression
     operated LessThan e1 e2 = moveLiterals LessThan e1 e2
     operated LessEqual e1 e2 = moveLiterals LessEqual e1 e2
     operated Equal e1 e2 = moveLiterals Equal e1 e2
     operated op e1 e2 = Operated op e1 e2
+
+    -- Also simplify unnecessary indexing
+    index (Repby arr index ex) index' | index == index' = ex
+    index arr index = Index arr index
+    repby arr index (Index arr' index') | arr == arr' && index == index' = arr
+    repby arr index expr = Repby arr index expr
 
     -- Group the literals on the same side of an (in)equality operator
     -- we assume that there aren't any sides that aren't evaluated already.
