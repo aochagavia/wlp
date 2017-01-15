@@ -101,7 +101,7 @@ prop_localVarsWork = once $ p === expectedP
     where
     q = ref "y" <. i 0
     p = wlp overwriteLocalVar q
-    expectedP = ref "x1" <. i 0
+    expectedP = ref "x" <. i 0
 
 -- |The example program E from the assignment
 exampleProgram :: Program
@@ -122,6 +122,60 @@ prop_exampleProgramPaths = once $ foundPaths === expectedPaths
             [assume $ i (-1) <=. ref "x", assume $ neg $ i 0 <. ref "x", assignN ["y"] [ref "x"], assert $ ref "y" ==. i 0],
             [assume $ i (-1) <=. ref "x", assume $ i 0 <. ref "x", assignN ["x"] [ref "x" -. i 1], assume $ neg $ i 0 <. ref "x", assignN ["y"] [ref "x"], assert $ ref "y" ==. i 0],
             [assume $ i (-1) <=. ref "x", assume $ i 0 <. ref "x", assignN ["x"] [ref "x" -. i 1], assume $ i 0 <. ref "x", assignN ["x"] [ref "x" -. i 1], assume $ neg $ i 0 <. ref "x", assignN ["y"] [ref "x"], assert $ ref "y" ==. i 0]
+        ]
+
+-- |Don't bind variables that will enter into the WLP
+varTest = program "varTest" [] [] [
+        assume $ ref "b",
+        var [("b", int)] [
+            assert $ ref "b"
+        ]
+    ]
+
+prop_varTestWLP :: Property
+prop_varTestWLP = once $ foundWLP === expectedWLP
+    where
+    foundWLP = wlpPath $ head $ paths 2 varTest
+    expectedWLP = ref "b" =>. forall "b" int (ref "b" /\. b True)
+
+-- |Program calls have some interesting edge cases with bound vs. non-bound variables.
+asgTest = program "asgTest" [("i", int)] [("j", int)] [
+        assume $ ref "i" ==. i 0,
+        if_ (ref "b") [
+            call ["j"] asgTest [ref "i"]
+        ] [
+            assignN ["j"] [ref "i"]
+        ],
+        assert $ ref "j" ==. i 0
+    ]
+
+prop_asgTestPaths :: Property
+prop_asgTestPaths = once $ foundPaths === expectedPaths
+    where
+    foundPaths, expectedPaths :: [[Statement]]
+    foundPaths = map unSequence $ paths 10 asgTest
+    expectedPaths = [
+            [
+                assume $ ref "i" ==. i 0,
+                assume $ ref "b",
+                -- this is the interesting part: the local variables get a new name
+                var [("x1", int), ("x2", int), ("x3", int)] [
+                    -- We have to do some ugly work since `Sequence` is not
+                    -- the right associativity.
+                    assignN ["x2"] [ref "i"] `Sequence`
+                    (skip `Sequence` (
+                    (assume $ neg $ ref "x1") `Sequence`
+                    assignN ["x3"] [ref "x2"] `Sequence`
+                    skip)) `Sequence`
+                    assignN ["j"] [ref "x3"]
+                ],
+                assert $ ref "j" ==. i 0
+            ], [
+                assume $ ref "i" ==. i 0,
+                assume $ neg $ ref "b",
+                assignN ["j"] [ref "i"],
+                assert $ ref "j" ==. i 0
+            ]
         ]
 
 exampleProgramIsWrong :: IO CheckResult

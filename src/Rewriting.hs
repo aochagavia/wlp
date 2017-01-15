@@ -63,6 +63,14 @@ class FreeVars syntax where
 replaceVar :: Name -> Map.Map Name Expression -> Expression
 replaceVar name substs = fromMaybe (NameExpr name) (Map.lookup name substs)
 
+-- |Determine all the free variables in a list of syntax items.
+allFreeVars :: FreeVars syntax => [syntax] -> Set.Set AsgTarget
+allFreeVars = concatMapSet freeVars
+    where
+    -- |Equivalent to concatMap but makes a set instead of a list.
+    concatMapSet :: Ord b => (a -> Set.Set b) -> [a] -> Set.Set b
+    concatMapSet f = foldr (Set.union . f) Set.empty
+
 instance FreeVars Expression where
     freeVars (LiteralExpr _) = Set.empty
     freeVars (NameExpr name) = Set.singleton $ NameTarget name
@@ -91,11 +99,7 @@ instance FreeVars Statement where
     freeVars Skip = Set.empty
     freeVars (Assert expr) = freeVars expr
     freeVars (Assume expr) = freeVars expr
-    freeVars (Assign vars exprs) = Set.fromList vars `Set.union` concatMapSet freeVars exprs
-        where
-        -- |Equivalent to concatMap but makes a set instead of a list.
-        concatMapSet :: Ord b => (a -> Set.Set b) -> [a] -> Set.Set b
-        concatMapSet f = foldr (Set.union . f) Set.empty
+    freeVars (Assign vars exprs) = Set.fromList vars `Set.union` allFreeVars exprs
     freeVars (Sequence stmt1 stmt2) = freeVars stmt1 `Set.union` freeVars stmt2
     freeVars (If cond stmt1 stmt2) = freeVars cond `Set.union` freeVars stmt1 `Set.union` freeVars stmt2
     freeVars (While cond stmt) = freeVars cond `Set.union` freeVars stmt
@@ -105,11 +109,7 @@ instance FreeVars Statement where
         isStillFree :: AsgTarget -> Bool
         isStillFree (NameTarget name) = all (not . sameName name) excluded
         isStillFree (ArrTarget name _) = all (not . sameName name) excluded
-    freeVars (ProgramCall prog vars args) = Set.fromList vars `Set.union` concatMapSet freeVars args
-        where
-        -- |Equivalent to concatMap but makes a set instead of a list.
-        concatMapSet :: Ord b => (a -> Set.Set b) -> [a] -> Set.Set b
-        concatMapSet f = foldr (Set.union . f) Set.empty
+    freeVars (ProgramCall prog vars args) = Set.fromList vars `Set.union` allFreeVars args
 
 
     replace Skip _ = Skip
@@ -142,6 +142,32 @@ instance FreeVars Statement where
     replace (Var vars stmt) substs = Var vars $ replace stmt substs'
         where
         substs' = foldr (Map.delete . toName) substs vars
+    replace (ProgramCall prog vars exprs) substs = ProgramCall prog replacedVars replacedExprs
+        where
+        replacedVars :: [AsgTarget]
+        replacedVars = map (`replaceVar'` substs) vars
+        replaceVar' :: AsgTarget -> Map.Map Name Expression -> AsgTarget
+        replaceVar' (NameTarget name) substs = case replaceVar name substs of
+            NameExpr result -> NameTarget result
+        replaceVar' (ArrTarget arr index) substs = case replaceVar arr substs of
+            NameExpr result -> ArrTarget result $ replace index substs
+        replacedExprs :: [Expression]
+        replacedExprs = map (`replace` substs) exprs
+
+instance FreeVars Program where
+    freeVars (Program _ inParams outParams code) = codeVars `Set.union` inVars `Set.union` outVars
+        where
+        codeVars = freeVars code
+        inVars = Set.fromList $ map (NameTarget . toName) inParams
+        outVars = Set.fromList $ map (NameTarget . toName) outParams
+    replace (Program n inParams outParams code) substs = Program n inParams' outParams' code'
+        where
+        code' = replace code substs
+        inParams' = map replaceVariable inParams
+        outParams' = map replaceVariable outParams
+        replaceVariable :: Variable -> Variable
+        replaceVariable (Variable name ty) = case replaceVar name substs of
+            NameExpr result -> Variable result ty
 
 -- |Infer the type of all free variables in the expression.
 -- We need to know the type the expression returns to handle the case of NameExpr.

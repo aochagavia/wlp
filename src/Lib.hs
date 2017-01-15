@@ -43,11 +43,17 @@ wlp' (Assign targets exprs) q = replace q $ replacements $ zip targets exprs
 wlp' (Sequence stmt1 stmt2) q = wlp' stmt1 $ wlp' stmt2 q
 wlp' (Assert condition) q = condition /\. q
 wlp' (Assume condition) q = condition =>. q
--- Local variables get renamed so they don't clash with those in the condition
-wlp' (Var vars stmt) q = wlp' (refresh currentFree stmt) q
+-- Local variables get put in Forall so they don't clash with those in the condition
+wlp' (Var vars stmt) q = addForalls $ wlp' (refresh currentFree stmt) q
     where
-    currentFree :: Set.Set Name
-    currentFree = Set.map toName (freeVars q) `Set.intersection` Set.map toName (Set.fromList vars)
+    addForalls :: Predicate -> Predicate
+    addForalls q = Set.foldr addForall q $ stmtFree `Set.difference` qFree
+    addForall :: Name -> Predicate -> Predicate
+    addForall var q = forall var int q
+    currentFree, qFree, stmtFree :: Set.Set Name
+    currentFree = qFree `Set.intersection` stmtFree
+    qFree = Set.map toName (freeVars q)
+    stmtFree = Set.map toName (Set.fromList vars)
 -- Note that we don't expect while or if statements to be present in the path,
 -- since they have just been desugared
 wlp' stmt q = error $ "Statement " ++ show stmt ++ " has no wlp defined!"
@@ -90,19 +96,22 @@ paths n (Program _ _ _ s) = map fst $ paths' n s
         return (Var vars path, length)
     -- Interpret a program call via inlining.
     -- This should also handle recursive calls since Haskell is lazy.
-    paths' n (ProgramCall (Program _ params returns code) resultAsgs args)
+    paths' n (ProgramCall prog resultAsgs args)
         = paths' n $ Var locals inlined
         where
         dropConditions = foldStatement (Skip, const Skip, const Skip, Assign,
             Sequence, If, While, Var, ProgramCall)
-        locals = map (flip Variable int . toName) $ Set.toList $ freeVars inlined
+        locals = map (flip Variable int . toName) $ Set.toList $ freeVars code'
+        -- Make sure we don't accidentally rescope any of our expressions.
+        movedToScope = Set.map toName $ allFreeVars args `Set.union` Set.fromList resultAsgs `Set.union` freeVars prog
+        (Program _ params' returns' code') = refresh movedToScope prog
         inlined =
-            Assign (map (NameTarget . toName) params) args `Sequence`
+            Assign (map (NameTarget . toName) params') args `Sequence`
             -- Note that we can't use the pre-/postconditions since we need to
             -- satisfy them, not use them! (Also, they might contain free
             -- variables that we don't want to get bound.)
-            dropConditions code `Sequence`
-            Assign resultAsgs (map (ref . toName) returns)
+            dropConditions code' `Sequence`
+            Assign resultAsgs (map (ref . toName) returns')
 
 -- |Convert a range of values to a QuickCheck generator.
 rangeToGen :: Range -> Gen Literal
