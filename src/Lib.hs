@@ -250,7 +250,7 @@ wlpCheck testName prog len = do
     return finalResult
     where
     maxTests :: Int
-    maxTests = 1000
+    maxTests = 1000 * len
     -- A list of potential test cases.
     properties :: [Gen CheckResult]
     properties = map (testPredicate . wlpPath) $ paths len prog

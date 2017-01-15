@@ -251,6 +251,9 @@ sort = program [("a", Array IntType), ("N", int)] [("a'", Array IntType)] [
             (("a" !!. ref "i") <=. ("a" !!. (ref "i" +. i 1)))
     ]
 
+sortWorks :: IO CheckResult
+sortWorks = wlpCheck "sort" sort 20
+
 -- |Represents parts of expressions that have an explicit type.
 class ArbitraryTyped a where
     arbitraryTyped :: Type -> Gen a
@@ -395,3 +398,4 @@ main = do
     minindWorks
     swapWorks
     findNonzeroWorks
+    sortWorks

@@ -211,12 +211,19 @@ normalize = stripForall . prenex . normalize'
     operated Vee e1 (LiteralExpr (LiteralBool False)) = e1
     operated Vee (LiteralExpr (LiteralBool True)) e1 = b True
     operated Vee (LiteralExpr (LiteralBool False)) e1 = e1
+    -- | deMorgan's laws: (~p /\ ~q) === ~(p \/ q) and dually
+    operated Vee (Negation e1) (Negation e2) = neg $ operated Wedge e1 e2
+    operated Wedge (Negation e1) (Negation e2) = neg $ operated Vee e1 e2
     -- | True -> e1 === e1 and False -> e1 === True
     operated Implies (LiteralExpr (LiteralBool True)) e1 = e1
     operated Implies (LiteralExpr (LiteralBool False)) e1 = b True
     -- | e1 -> True === True and e1 -> False === Negation e1
     operated Implies e1 (LiteralExpr (LiteralBool True)) = b True
     operated Implies e1 (LiteralExpr (LiteralBool False)) = negation e1
+    -- | (p /\ p) === (p \/ p) === p
+    operated Vee e1 e2 | e1 == e2 = e1
+    operated Wedge e1 e2 | e1 == e2 = e1
+    operated Implies e1 e2 | e1 == e2 = b True
     -- Try to evaluate more of the expression
     operated LessThan e1 e2 = moveLiterals LessThan e1 e2
     operated LessEqual e1 e2 = moveLiterals LessEqual e1 e2
