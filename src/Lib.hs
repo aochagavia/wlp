@@ -170,66 +170,49 @@ type Checker = Gen Instantiations -> Gen CheckResult
 testPredicate :: Predicate -> Gen CheckResult
 testPredicate basePredicate
     | any isEmpty ranges = pure NoCases
-    | otherwise = quantifiedCases True normalizedPredicate instantiations
+    | otherwise = quantifiedCases normalizedPredicate instantiations
     where
     normalizedPredicate :: Predicate
     normalizedPredicate = normalize basePredicate
 
-    -- |Evaluate a quantifier-free predicate and conclude based on the quantifier.
-    conclude :: Bool -> Predicate -> Checker
-    conclude isForall pred instantiationGen = do
+    -- |Evaluate a quantifier-free predicate with free variables
+    -- (therefore, it should act as a Forall.)
+    conclude :: Predicate -> Checker
+    conclude pred instantiationGen = do
         instantiation <- instantiationGen
         let outcome = runCase pred instantiation
-        if isForall
-        then if outcome
-            then return $ SuccessForall pred
-            else return $ Counterexample pred instantiation
-        else if outcome
-            then return $ SuccessExists pred instantiation
-            else return $ NoExample pred
+        return $ if outcome
+            then SuccessForall pred
+            else Counterexample pred instantiation
 
     -- |Add a new quantifier to the test.
-    quantify :: Bool -> BoundVariable -> Predicate -> Checker -> Checker
-    quantify isForall (Variable name ty) pred checkPredicate instantiation = do
+    quantify :: Quantifier -> BoundVariable -> Predicate -> Checker -> Checker
+    quantify q (Variable name ty) pred checkPredicate instantiation = do
         -- TODO: infer ranges
         value <- rangeToGen $ fullRangeFor ty
         let makeInstantiation = Map.insert (NameTarget name) value
         let instantiation' = makeInstantiation <$> instantiation
         result <- checkPredicate instantiation'
-        return $ if isForall
-        then case result of
-            res@NoCases{} -> SuccessForall pred
-            res@SuccessForall{} -> SuccessForall pred
-            res@SuccessExists{} -> SuccessForall pred
-            res@(Counterexample _ inst') -> Counterexample pred inst'
-            res@NoExample{} -> NoExample pred
-        else case result of
-            res@NoCases{} -> SuccessExists pred $ makeInstantiation Map.empty
-            res@SuccessForall{} -> SuccessForall pred
-            res@(SuccessExists _ inst') -> SuccessExists pred $ makeInstantiation inst'
-            res@(Counterexample _ inst') -> NoExample pred
-            res@NoExample{} -> NoExample pred
+        return $ case q of
+            ForAll -> case result of
+                res@NoCases{} -> SuccessForall pred
+                res@SuccessForall{} -> SuccessForall pred
+                res@SuccessExists{} -> SuccessForall pred
+                res@(Counterexample _ inst') -> Counterexample pred inst'
+                res@NoExample{} -> NoExample pred
+            Exists -> case result of
+                res@NoCases{} -> NoExample pred
+                res@SuccessForall{} -> SuccessForall pred
+                res@(SuccessExists _ inst') -> SuccessExists pred $ makeInstantiation inst'
+                res@(Counterexample _ inst') -> NoExample pred
+                res@NoExample{} -> NoExample pred
 
-    -- |Take the negation of a test.
-    negate :: Predicate -> Checker -> Checker
-    negate pred checkPredicate instantiation = do
-        result <- checkPredicate instantiation
-        return $ case result of
-            res@NoCases{} -> NoCases
-            res@SuccessForall{} -> NoExample pred
-            res@(SuccessExists _ inst') -> Counterexample pred inst'
-            res@(Counterexample _ inst') -> SuccessExists pred inst'
-            res@NoExample{} -> SuccessForall pred
-
-    -- Check a predicate with quantifiers, where the next quantifier should
-    -- be interpreted as ∀ when isForall and ∃ when not.
-    quantifiedCases :: Bool -> Predicate -> Checker
-    quantifiedCases isForall originalPred@(Negation pred)
-        = negate originalPred $ quantifiedCases (not isForall) pred
-    quantifiedCases isForall originalPred@(Forall var pred)
-        = quantify isForall var originalPred $ quantifiedCases isForall pred
-    quantifiedCases isForall pred
-        = conclude isForall pred
+    -- Test a case with quantifiers, when it is in prenex normal form.
+    -- Repeatedly strips the quantifier and makes a new test with it.
+    quantifiedCases :: Predicate -> Checker
+    quantifiedCases originalPred@(Quantify q var pred)
+        = quantify q var originalPred $ quantifiedCases pred
+    quantifiedCases pred = conclude pred
 
     -- Evaluate a predicate without quantifiers.
     runCase :: Predicate -> Instantiations -> Bool

@@ -100,7 +100,12 @@ nonTrivRange False (Operated Equal (LiteralExpr (LiteralInt i)) (Index (NameExpr
 nonTrivRange False (Operated Equal (Index (NameExpr n) e) (LiteralExpr (LiteralInt i)))
     = Map.singleton (ArrTarget n e) $ bounded i i
 
-nonTrivRange bool (Forall var expr) = nonTrivRange bool expr
+-- If all y in Y have P(y), then ∀x∈X P(x) is equivalent to ∀x∈(X \ Y) P(x)
+-- (and ~∀x∈X P(x) is equivalent to ~∀x∈(X \ Y) P(x))
+nonTrivRange _ (Quantify ForAll var expr) = nonTrivRange True expr
+-- If all y in Y have ~P(y), then ∃x∈X P(x) is equivalent to ∃x∈(X \ Y) P(x)
+-- (and ~∃x∈X P(x) is equivalent to ~∃x∈(X \ Y) P(x))
+nonTrivRange _ (Quantify Exists var expr) = nonTrivRange False expr
 
 nonTrivRange _ _ = Map.empty -- TODO: find some other cases to cover
 
@@ -146,12 +151,11 @@ fullRangeFor (Primitive BoolType) = RangeBool $ Set.fromList [True, False]
 fullRangeFor (Primitive IntType) = RangeInt [(MinInfinite, MaxInfinite)]
 fullRangeFor (Array prim) = RangeArray $ fullRangeFor (Primitive prim)
 
--- |Write the predicate in prenex' normal form
+-- |Write the predicate in prenex normal form
 -- In PNF, all quantifiers are moved to the front of the predicate
 -- (which makes finding counterexamples a lot easier)
--- In P'NF, we only have Forall, so we also allow (a single) Negation in between Forall
-prenex' :: Predicate -> Predicate
-prenex' = foldExpression (LiteralExpr, NameExpr, op, neg, Index, Repby, Forall)
+prenex :: Predicate -> Predicate
+prenex = foldExpression (LiteralExpr, NameExpr, op, neg, Index, Repby, Quantify)
     where
     -- Refresh (only) the given variable
     refresh' :: (FreeVars syntax, Bindable var) => var -> syntax -> syntax
@@ -159,37 +163,34 @@ prenex' = foldExpression (LiteralExpr, NameExpr, op, neg, Index, Repby, Forall)
     -- Replaces any free instances of the given variable
     -- Since we get a lot of double negations, eliminate them
     neg (Negation p) = p
+    neg (Quantify ForAll v p) = Quantify Exists v $ neg p
+    neg (Quantify Exists v p) = Quantify ForAll v $ neg p
     neg p = Negation p
     -- Pull quantifiers outside of operators
     -- (∀p) /\ q === ∀(p /\ q) and symmetrically, and dually
-    op Wedge (Forall var p) q = Forall var $ op Wedge p $ refresh' var q
-    op Wedge q (Forall var p) = Forall var $ op Wedge p $ refresh' var q
-    op Vee (Forall var p) q = Forall var $ op Vee p $ refresh' var q
-    op Vee q (Forall var p) = Forall var $ op Vee p $ refresh' var q
-    -- (¬∀p) /\ q === ¬∀(p\/¬q) and symmetrically, and dually
-    op Wedge (Negation (Forall var p)) q
-        = Negation $ Forall var $ op Vee p $ neg $ refresh' var q
-    op Wedge q (Negation (Forall var p))
-        = Negation $ Forall var $ op Vee p $ neg $ refresh' var q
-    op Vee (Negation (Forall var p)) q
-        = Negation $ Forall var $ op Wedge p $ neg $ refresh' var q
-    op Vee q (Negation (Forall var p))
-        = Negation $ Forall var $ op Wedge p $ neg $ refresh' var q
+    op Wedge (Quantify qu var p) q
+        = Quantify qu var $ op Wedge p $ refresh' var q
+    op Wedge q (Quantify qu var p)
+        = Quantify qu var $ op Wedge p $ refresh' var q
+    op Vee (Quantify qu var p) q
+        = Quantify qu var $ op Vee p $ refresh' var q
+    op Vee q (Quantify qu var p)
+        = Quantify qu var $ op Vee p $ refresh' var q
     -- (p => q) === (~p \/ q), combined with the rules above
-    op Implies (Forall var p) q = Negation $ Forall var $ neg $ op Implies p (refresh' var q)
-    op Implies q (Forall var p) = Forall var $ op Implies (refresh' var q) p
-    op Implies (Negation (Forall var p)) q
-        = Negation $ Forall var $ neg $ op Implies p $ refresh' var q
-    op Implies q (Negation (Forall var p))
-        = Negation $ Forall var $ neg $ op Implies (refresh' var q) (neg p)
+    op Implies (Quantify ForAll var p) q
+        = Quantify Exists var $ op Implies (refresh' var p) q
+    op Implies (Quantify Exists var p) q
+        = Quantify ForAll var $ op Implies (refresh' var p) q
+    op Implies p (Quantify qu var q)
+        = Quantify qu var $ op Implies (refresh' var p) q
     op o p q = Operated o p q
 
 -- |Normalize a predicate to eliminate various implications and trivial truths.
 -- This isn't a full reduction but should get us far enough to generate test cases.
 normalize :: Predicate -> Predicate
-normalize = stripForall . prenex' . normalize'
+normalize = stripForall . prenex . normalize'
     where
-    normalize' = foldExpression (LiteralExpr, NameExpr, operated, negation, Index, Repby, Forall)
+    normalize' = foldExpression (LiteralExpr, NameExpr, operated, negation, Index, Repby, Quantify)
     -- | ~ ~ a === a
     negation (Negation exp) = exp
     -- ~(x < y) = x >= y
@@ -249,7 +250,7 @@ normalize = stripForall . prenex' . normalize'
 
     -- Get rid of all forall quantifiers in the front of the expression
     stripForall :: Predicate -> Predicate
-    stripForall (Forall var exp) = stripForall exp
+    stripForall (Quantify ForAll var exp) = stripForall exp
     stripForall exp = exp
 
 -- |Is there no quantifier whatsoever in this formula?
@@ -262,5 +263,5 @@ isQuantifierFree = foldExpression
     , id -- Negation
     , const $ const True -- Index
     , const $ const -- Repby
-    , const $ const False -- Forall
+    , const $ const $ const False -- Quantify
     )

@@ -301,20 +301,21 @@ instance ArbitraryTyped Expression where
                     <*> resize firstHalf (arbitraryTyped leftType)
                     <*> resize (size - firstHalf) (arbitraryTyped rightType)
             , Negation <$> resize (size-1) (arbitraryTyped bool)
-            , Forall <$> arbitrary <*> resize (size-1) (arbitraryTyped bool)
+            , Quantify <$> arbitraryBoundedEnum <*> arbitrary <*>
+                resize (size-1) (arbitraryTyped bool)
             ]
 
 -- |Check that prenex normalization gives predicates in prenex form
 prop_prenexGivesPrenex :: Property
 prop_prenexGivesPrenex = forAll (arbitraryTyped bool) $
-        isPrenex' . prenex'
+        isPrenex . prenex
     where
-    isPrenex' :: Predicate -> Bool
-    isPrenex' (LiteralExpr _) = True
-    isPrenex' (NameExpr _) = True
-    isPrenex' (Operated _ p q) = isQuantifierFree p && isQuantifierFree q
-    isPrenex' (Negation p) = isPrenex' p
-    isPrenex' (Forall _ p) = isPrenex' p
+    isPrenex :: Predicate -> Bool
+    isPrenex (LiteralExpr _) = True
+    isPrenex (NameExpr _) = True
+    isPrenex (Operated _ p q) = isQuantifierFree p && isQuantifierFree q
+    isPrenex (Negation p) = isQuantifierFree p
+    isPrenex (Quantify _ _ p) = isPrenex p
 
 -- |Check that normalization doesn't break predicates
 prop_normalizeIsEquivalent :: Property

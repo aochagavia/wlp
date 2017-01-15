@@ -71,7 +71,7 @@ instance FreeVars Expression where
     freeVars (Index arr expr) = freeVars arr `Set.union` freeVars expr
     freeVars (Repby arr index expr)
         = freeVars arr `Set.union` freeVars index `Set.union` freeVars expr
-    freeVars (Forall var expr) = makeBound var $ freeVars expr
+    freeVars (Quantify _ var expr) = makeBound var $ freeVars expr
 
     replace (LiteralExpr l) _ = LiteralExpr l
     replace (NameExpr name) substs = replaceVar name substs
@@ -82,7 +82,7 @@ instance FreeVars Expression where
     replace (Negation e) substs = Negation $ replace e substs
     replace (Index a i) substs = Index (replace a substs) $ replace i substs
     replace (Repby a i e) substs = Repby (replace a substs) (replace i substs) (replace e substs)
-    replace f@(Forall v@(Variable name _) e) substs = Forall v $ replace e substs'
+    replace f@(Quantify q v@(Variable name _) e) substs = Quantify q v $ replace e substs'
         where
         substs' = Map.delete name substs
 
@@ -152,7 +152,7 @@ typeInferExpr (Primitive prim) (Index arr index) = result
     arrName (NameExpr name) = name
     arrName (Repby arr _ _) = arrName arr
     arrMap = typeInferExpr (Array prim) arr
-typeInferExpr (Primitive BoolType) (Forall (Variable name _) expr) = deleted
+typeInferExpr (Primitive BoolType) (Quantify q (Variable name _) expr) = deleted
     where
     deleted = makeBoundMap name $ typeInferExpr bool expr
 typeInferExpr return (Operated op expr1 expr2) = left `Map.union` right

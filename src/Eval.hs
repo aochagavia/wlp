@@ -44,19 +44,19 @@ type ExpressionAlgebra a =
     , a -> a -- Negation
     , a -> a -> a -- Index
     , a -> a -> a -> a -- Repby
-    , BoundVariable -> a -> a -- Forall
+    , Quantifier -> BoundVariable -> a -> a -- Quantify
     )
 
 -- |Turn an algebra into a catamorphism
 foldExpression :: ExpressionAlgebra a -> Expression -> a
-foldExpression (literal, name, operated, negation, index, repby, forall) = fold' where
+foldExpression (literal, name, operated, negation, index, repby, quantify) = fold' where
     fold' (LiteralExpr l) = literal l
     fold' (NameExpr n) = name n
     fold' (Operated op e1 e2) = operated op (fold' e1) (fold' e2)
     fold' (Negation e) = negation (fold' e)
     fold' (Index a e) = index (fold' a) (fold' e)
     fold' (Repby a i e) = repby (fold' a) (fold' i) (fold' e)
-    fold' (Forall n e) = forall n (fold' e)
+    fold' (Quantify q n e) = quantify q n (fold' e)
 
 -- |Evaluate the binary operation.
 -- Errors if the types of the arguments are wrong.
@@ -80,7 +80,7 @@ evaluateClosed expr env = fold' expr where
     fold' (Operated op e1 e2) = operated op (fold' e1) (fold' e2)
     fold' (Negation e) = negation (fold' e)
     fold' (Index a e) = index a (fold' e) -- Note that we do this differently!
-    fold' (Forall n e) = forall n (fold' e)
+    fold' (Quantify q n e) = quantify q n (fold' e)
     -- Look up the value for the variable, or indicate it's missing.
     tryLookup :: AsgTarget -> Either AsgTarget Literal
     tryLookup target = case Map.lookup target env of
@@ -109,4 +109,4 @@ evaluateClosed expr env = fold' expr where
     index (NameExpr name) i' = do
         i <- i'
         tryLookup $ ArrTarget name $ LiteralExpr i
-    forall = error "Cannot decide forall! Use testPredicate to remove quantifiers."
+    quantify = error "Cannot decide predicate! Use testPredicate to remove quantifiers."

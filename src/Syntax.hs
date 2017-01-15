@@ -54,6 +54,16 @@ instance Show BinaryOp where
     show LessEqual = "<="
     show Equal = "=="
 
+-- |A quantifier, used to express predicates.
+data Quantifier
+    = ForAll
+    | Exists
+    deriving (Eq, Ord, Enum, Bounded)
+
+instance Show Quantifier where
+    show ForAll = "!A"
+    show Exists = "?E"
+
 -- |The type of a variable.
 data Type
     = Primitive PrimitiveType -- ^Types that can't be reduced further.
@@ -129,7 +139,7 @@ data Expression
         -- TODO: this feels too hard-coded compared to 'BinaryOp'.
     | Index Expression Expression
         -- ^Look up an index in an array.
-    | Forall BoundVariable Expression
+    | Quantify Quantifier BoundVariable Expression
         -- ^Quantify a predicate over all values the variable can assume.
     | Repby Expression Expression Expression
         -- ^Used for translating array assignments.
@@ -143,7 +153,7 @@ instance Show Expression where
     show (Operated op ex1 ex2) = "(" ++ show ex1 ++ ") " ++ show op ++ " (" ++ show ex2 ++ ")"
     show (Negation expr) = "~(" ++ show expr ++ ")"
     show (Index arr expr) = "(" ++ show arr ++ ")[" ++ show expr ++ "]"
-    show (Forall var expr) = "forall " ++ show var ++ " . " ++ show expr ++ ""
+    show (Quantify q var expr) = show q ++ " " ++ show var ++ " . " ++ show expr ++ ""
     show (Repby var index expr) = "(" ++ show var ++ ")[" ++ show index ++ " <- " ++ show expr ++ "]"
 
 -- *Building an AST
@@ -231,8 +241,8 @@ neg = Negation
 (!!.) = Index . ref
 -- |A quantifier.
 forall, exists :: Name -> Type -> Expression -> Expression
-forall = Forall ... Variable
-exists name ty = neg . forall name ty . neg
+forall = Quantify ForAll ... Variable
+exists = Quantify Exists ... Variable
 
 -- |One of the possible types.
 int, bool, ints, bools :: Type
