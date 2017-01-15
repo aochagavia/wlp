@@ -133,6 +133,21 @@ checker would reject all loops. Given two paths with different iteration counts,
 no (consistent) precondition would satisfy an assertion that both paths will
 be executed, but there are preconditions that either path may be taken.
 
+\subsubsection*{Program calls}
+
+We handle program calls by including the code of the called program in a path.
+The case of recursive calls is handled nicely by a combination of Haskell's
+lazy evaluation semantics and the upper limit on the paths, which ensures no
+infinitely long path will need to be generated.
+
+However, we cannot directly inline a program that contains pre- and
+postconditions. The calling function has the responsibility to satisfy these
+conditions, and cannot simply pass the responsibility to its own caller.
+Instead, we replace each assumption with an assertion and vice versa. As long
+as all the called programs are correct, this implies the calling program is
+correct as well. We could also drop all assertions in the called program, but
+we chose not to do so, as recursive calls might benefit from them.
+
 \subsection{Calculating WLP}
 
 The implementation of WLP for \texttt{Skip}, \texttt{Sequence}, \texttt{Assume}
