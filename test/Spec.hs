@@ -124,7 +124,7 @@ prop_exampleProgramPaths = once $ foundPaths === expectedPaths
             [assume $ i (-1) <=. ref "x", assume $ i 0 <. ref "x", assignN ["x"] [ref "x" -. i 1], assume $ i 0 <. ref "x", assignN ["x"] [ref "x" -. i 1], assume $ neg $ i 0 <. ref "x", assignN ["y"] [ref "x"], assert $ ref "y" ==. i 0]
         ]
 
-exampleProgramIsWrong :: IO Result
+exampleProgramIsWrong :: IO CheckResult
 exampleProgramIsWrong = wlpCheck "exampleProgram" exampleProgram 7
 
 -- |The example program E from the assignment, but now it works
@@ -136,7 +136,7 @@ exampleProgramFixed = program [("x", int)] [("y", int)] [
         assert $ ref "y" ==. i 0
     ]
 
-exampleProgramIsFixed :: IO Result
+exampleProgramIsFixed :: IO CheckResult
 exampleProgramIsFixed = wlpCheck "exampleProgram" exampleProgramFixed 7
 
 -- |The minind program from assignment 1
@@ -156,7 +156,7 @@ minind = program [("a", Array IntType), ("i", int), ("N", int)] [("r", int)] [
             (("a" !!. ref "j") <=. ("a" !!. ref "r")))
     ]
 
-minindWorks :: IO Result
+minindWorks :: IO CheckResult
 minindWorks = wlpCheck "minind" minind 10
 
 -- |The minind program from assignment 1 with a broken postcondition
@@ -175,7 +175,7 @@ minindWrong = program [("a", Array IntType), ("i", int), ("N", int)] [("r", int)
         assert $ forall "j" int (("a" !!. ref "j") <=. ("a" !!. ref "r"))
     ]
 
-minindIsWrong :: IO Result
+minindIsWrong :: IO CheckResult
 minindIsWrong = wlpCheck "minind" minindWrong 10
 
 swap :: Program
@@ -190,7 +190,7 @@ swap = program [("a", Array IntType), ("i", int), ("j", int)] [("a'", Array IntT
         assert $ (("a'" !!. ref "j") ==. ref "x") /\. (("a'" !!. ref "i") ==. ref "y")
     ]
 
-swapWorks :: IO Result
+swapWorks :: IO CheckResult
 swapWorks = wlpCheck "swap" swap 10
 
 swapWrong :: Program
@@ -205,7 +205,7 @@ swapWrong = program [("a", Array IntType), ("i", int), ("j", int)] [("a'", Array
         assert $ (("a'" !!. ref "i") ==. ref "x") /\. (("a'" !!. ref "j") ==. ref "y")
     ]
 
-swapIsWrong :: IO Result
+swapIsWrong :: IO CheckResult
 swapIsWrong = wlpCheck "swap" swapWrong 10
 
 -- |A program that doesn't work but is very hard to prove.
@@ -215,7 +215,7 @@ findNonzeroWrong = program [("a", Array IntType)] [("i", int)] [
         assert $ ("a" !!. ref "j") !=. i 0
     ]
 
-findNonzeroIsWrong :: IO Result
+findNonzeroIsWrong :: IO CheckResult
 findNonzeroIsWrong = wlpCheck "findNonzero" findNonzeroWrong 20
 
 findNonzero :: Program
@@ -231,7 +231,7 @@ findNonzero = program [("a", Array IntType)] [("i", int)] [
         assert $ ("a" !!. ref "i") !=. i 0
     ]
 
-findNonzeroWorks :: IO Result
+findNonzeroWorks :: IO CheckResult
 findNonzeroWorks = wlpCheck "findNonzero" findNonzero 20
 
 sort :: Program

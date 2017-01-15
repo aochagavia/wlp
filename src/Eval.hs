@@ -109,4 +109,4 @@ evaluateClosed expr env = fold' expr where
     index (NameExpr name) i' = do
         i <- i'
         tryLookup $ ArrTarget name $ LiteralExpr i
-    forall = error "Cannot decide forall!. Use wlpCheck to remove quantifiers."
+    forall = error "Cannot decide forall! Use testPredicate to remove quantifiers."

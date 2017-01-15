@@ -121,19 +121,134 @@ rangeToGen (RangeBool r) = LiteralBool <$> rangeToGenB r
     rangeToGenB = elements . Set.toList
 rangeToGen (RangeArray r) = pure $ LiteralArray r
 
+-- |Represents the values we chose for variables.
+type Instantiations = Map.Map AsgTarget Literal
+
+-- |Represents the outcome of checking a predicate.
+data CheckResult
+    = NoCases
+        -- ^There were no test cases to consider.
+        -- This indicates the predicate is surely correct.
+    | SuccessForall Predicate
+        -- ^Each instantiation of Forall succeeded.
+        -- This indicates the predicate is likely correct.
+    | SuccessExists Predicate Instantiations
+        -- ^There was a successful instantiation of Exists.
+        -- This indicates the predicate is surely correct.
+    | Counterexample Predicate Instantiations
+        -- ^There is a failing instantiation of Forall.
+        -- This indicates the predicate is surely incorrect.
+    | NoExample Predicate
+        -- ^Could not find a case where Exists holds.
+        -- This indicates the predicate is likely incorrect.
+    deriving (Show)
+
+-- |Do we consider these cases a success?
+isSuccess :: CheckResult -> Bool
+isSuccess NoCases{} = True
+isSuccess SuccessForall{} = True
+isSuccess SuccessExists{} = True
+isSuccess Counterexample{} = False
+isSuccess NoExample{} = False
+-- |Is the outcome of these cases sure?
+isSure :: CheckResult -> Bool
+isSure NoCases{} = True
+isSure SuccessForall{} = False
+isSure SuccessExists{} = True
+isSure Counterexample{} = True
+isSure NoExample{} = False
+
+-- |Convert CheckResult to QuickCheck results.
+instance Testable CheckResult where
+    property = property . isSuccess
+
+-- |Take the surest failure of all the results.
+conjunction :: [CheckResult] -> CheckResult
+conjunction = foldr findSureFailure NoCases
+    where
+    findSureFailure r1 r2 = case (isSuccess r1, isSuccess r2) of
+        (True, True) -> findSure r1 r2
+        (False, True) -> r1
+        (True, False) -> r2
+        (False, False) -> findSure r1 r2
+    findSure r1 r2 = case (isSure r1, isSure r2) of
+        (True, True) -> r1
+        (False, True) -> r1
+        (True, False) -> r2
+        (False, False) -> r1
+
+-- | The type of functions that check properties of the instantiations.
+type Checker = Gen Instantiations -> Gen CheckResult
+
 -- |Instantiate the free variables of a predicate and check that it holds.
 -- Uses 'Gen' to convert ranges of acceptable values to a single value.
-testPredicate :: Predicate -> Property
-testPredicate pred = checkCase
+testPredicate :: Predicate -> Gen CheckResult
+testPredicate basePredicate
+    | any isEmpty ranges = pure NoCases
+    | otherwise = quantifiedCases True normalizedPredicate instantiations
     where
-    checkCase :: Property
-    checkCase =
-        if any isEmpty ranges
-        then property True -- If the conditions aren't met, we always succeed
-        else counterexample (show pred) $ forAll instantiations runCase
+    normalizedPredicate :: Predicate
+    normalizedPredicate = normalize basePredicate
 
-    runCase :: Map.Map AsgTarget Literal -> Bool
-    runCase = literalToBool . fromRight . evaluateClosed pred . literalize
+    -- |Evaluate a quantifier-free predicate and conclude based on the quantifier.
+    conclude :: Bool -> Predicate -> Checker
+    conclude isForall pred instantiationGen = do
+        instantiation <- instantiationGen
+        let outcome = runCase pred instantiation
+        if isForall
+        then if outcome
+            then return $ SuccessForall pred
+            else return $ Counterexample pred instantiation
+        else if outcome
+            then return $ SuccessExists pred instantiation
+            else return $ NoExample pred
+
+    -- |Add a new quantifier to the test.
+    quantify :: Bool -> BoundVariable -> Predicate -> Checker -> Checker
+    quantify isForall (Variable name ty) pred checkPredicate instantiation = do
+        -- TODO: infer ranges
+        value <- rangeToGen $ fullRangeFor ty
+        let makeInstantiation = Map.insert (NameTarget name) value
+        let instantiation' = makeInstantiation <$> instantiation
+        result <- checkPredicate instantiation'
+        return $ if isForall
+        then case result of
+            res@NoCases{} -> SuccessForall pred
+            res@SuccessForall{} -> SuccessForall pred
+            res@SuccessExists{} -> SuccessForall pred
+            res@(Counterexample _ inst') -> Counterexample pred inst'
+            res@NoExample{} -> NoExample pred
+        else case result of
+            res@NoCases{} -> SuccessExists pred $ makeInstantiation Map.empty
+            res@SuccessForall{} -> SuccessForall pred
+            res@(SuccessExists _ inst') -> SuccessExists pred $ makeInstantiation inst'
+            res@(Counterexample _ inst') -> NoExample pred
+            res@NoExample{} -> NoExample pred
+
+    -- |Take the negation of a test.
+    negate :: Predicate -> Checker -> Checker
+    negate pred checkPredicate instantiation = do
+        result <- checkPredicate instantiation
+        return $ case result of
+            res@NoCases{} -> NoCases
+            res@SuccessForall{} -> NoExample pred
+            res@(SuccessExists _ inst') -> Counterexample pred inst'
+            res@(Counterexample _ inst') -> SuccessExists pred inst'
+            res@NoExample{} -> SuccessForall pred
+
+    -- Check a predicate with quantifiers, where the next quantifier should
+    -- be interpreted as ∀ when isForall and ∃ when not.
+    quantifiedCases :: Bool -> Predicate -> Checker
+    quantifiedCases isForall originalPred@(Negation pred)
+        = negate originalPred $ quantifiedCases (not isForall) pred
+    quantifiedCases isForall originalPred@(Forall var pred)
+        = quantify isForall var originalPred $ quantifiedCases isForall pred
+    quantifiedCases isForall pred
+        = conclude isForall pred
+
+    -- Evaluate a predicate without quantifiers.
+    runCase :: Predicate -> Instantiations -> Bool
+    runCase predicate = literalToBool . fromRight . evaluateClosed predicate . literalize
 
     -- Make sure any expressions in the AsgTarget get evaluated
     literalize :: Map.Map AsgTarget Literal -> Map.Map AsgTarget Literal
@@ -152,42 +267,23 @@ testPredicate pred = checkCase
     rangeInstantiations = mapM rangeToGen ranges
     (ranges, aliases) = Map.mapEither id $ allRanges `unionAliasRange` knownAliases
     knownAliases :: AliasMap
-    knownAliases = nonTrivAlias True pred
+    knownAliases = nonTrivAlias True normalizedPredicate
     allRanges :: RangeMap
-    allRanges = defaultInfinite bool pred $ nonTrivRange True pred
+    allRanges = defaultInfinite bool normalizedPredicate $ nonTrivRange True normalizedPredicate
 
 -- |Use QuickCheck to test each path through the program up to a given length.
-wlpCheck :: String -> Program -> Int -> IO Result
+wlpCheck :: String -> Program -> Int -> IO CheckResult
 wlpCheck testName prog len = do
     putStrLn $ "Testing " ++ testName
-    let testCases = map qcResult properties
-    finalResult <- foldr conjoinResult (pure noPaths) testCases
-    case finalResult of
-        NoExpectedFailure{output} -> do
-            putStrLn $ output
-            return finalResult
-        Failure{output} -> do
-            putStrLn $ output
-            return finalResult
-        Success{} -> do
-            putStrLn "Succeeded."
-            return finalResult
+    finalResult <- runTests
+    if isSuccess finalResult
+    then putStrLn $ "Success!"
+    else putStrLn $ "Failed: " ++ show finalResult
+    return finalResult
     where
-    qcResult = quickCheckWithResult stdArgs{chatty = False, maxSuccess = 1000}
-    noPaths :: Result
-    noPaths = Success 0 [] "No more paths to consider."
-    properties :: [Property]
-    properties = map (checkComplicated . normalize . wlpPath) $ paths len prog
-    -- We have to do our own combination of predicates since QuickCheck can't
-    -- calculate the conjunction of predicates with expectFailure.
-    checkComplicated :: Predicate -> Property
-    checkComplicated (Negation pred) = expectFailure $ checkComplicated (normalize pred)
-    checkComplicated pred = testPredicate pred
-    conjoinResult :: IO Result -> IO Result -> IO Result
-    conjoinResult first second = do
-        -- Test the first, if it didn't fail, test the second.
-        firstResult <- first
-        case firstResult of
-            Failure{} -> return firstResult
-            NoExpectedFailure{} -> return firstResult
-            _ -> second
+    properties :: [Gen CheckResult]
+    properties = map (testPredicate . wlpPath) $ paths len prog
+    testsToRun :: [IO CheckResult]
+    testsToRun = map generate $ concat $ replicateM 10 properties
+    runTests :: IO CheckResult
+    runTests = conjunction <$> sequence testsToRun
