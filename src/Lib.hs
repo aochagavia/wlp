@@ -44,10 +44,10 @@ wlp' (Sequence stmt1 stmt2) q = wlp' stmt1 $ wlp' stmt2 q
 wlp' (Assert condition) q = condition /\. q
 wlp' (Assume condition) q = condition =>. q
 -- Local variables get renamed so they don't clash with those in the condition
-wlp' (Var vars stmt) q = wlp' stmt q
+wlp' (Var vars stmt) q = wlp' (refresh currentFree stmt) q
     where
     currentFree :: Set.Set Name
-    currentFree = Set.map toName $ freeVars q
+    currentFree = Set.map toName (freeVars q) `Set.intersection` Set.map toName (Set.fromList vars)
 -- Note that we don't expect while or if statements to be present in the path,
 -- since they have just been desugared
 wlp' stmt q = error $ "Statement " ++ show stmt ++ " has no wlp defined!"
