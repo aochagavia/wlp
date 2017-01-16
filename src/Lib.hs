@@ -87,10 +87,10 @@ paths n (Program _ _ _ s) = map fst $ paths' n s
         makeElsePath (path, length) = (assume (neg cond) `Sequence` path, length + 1)
         thenPaths = makeThenPath <$> paths' (n-1) then_
         elsePaths = makeElsePath <$> paths' (n-1) else_
-    paths' n s@(While cond body) = breakPath : continuePaths
-        where
-        breakPath = (assume $ neg cond, 0)
-        makeContinuePath (path, length) = (assume cond `Sequence` path, length + 1)
+    paths' n s@(While inv cond body) = breakPath : continuePaths
+        where  -- FIXME: is assert inv correct below? (see breakPath, makeContinuePath)
+        breakPath = (assert inv `Sequence` assume (neg cond), 0)
+        makeContinuePath (path, length) = (assert inv `Sequence` assume cond `Sequence` path, length + 1)
         continuePaths = makeContinuePath <$> paths' (n-1) (body `Sequence` s)
     paths' n (Var vars stmt) = do
         (path, length) <- paths' n stmt

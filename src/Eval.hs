@@ -20,7 +20,7 @@ type StatementAlgebra a =
     , AsgTargets -> Expressions -> a -- Assign
     , a -> a -> a -- Sequence
     , Expression -> a -> a -> a -- If
-    , Expression -> a -> a -- While
+    , Expression -> Expression -> a -> a -- While
     , Variables -> a -> a -- Var
     , Program -> AsgTargets -> Expressions -> a -- ProgramCall
     )
@@ -32,7 +32,7 @@ foldStatement (skip, assert, assume, assign, sequence, if_, while, var, program)
     fold' (Assign ts es) = assign ts es
     fold' (Sequence s1 s2) = sequence (fold' s1) (fold' s2)
     fold' (If c t e) = if_ c (fold' t) (fold' e)
-    fold' (While c b) = while c (fold' b)
+    fold' (While i c b) = while i c (fold' b)
     fold' (Var vs b) = var vs (fold' b)
     fold' (ProgramCall p ts es) = program p ts es
 
