@@ -30,20 +30,16 @@
 
 \section{Introduction}
 
-Even after decades of software verification research, there are still serious
-limitations to automated formal verification methods \cite{d2008survey}. A
-possible alternative to these methods is automated testing, which in some cases
-offers better scalability by giving up completeness.
+Within the field of software verification, there are different approaches to
+increase confidence in the correctness of a program. This project focuses on
+the testing approach, which gives up completeness for the sake of simplicity.
 
-Within the field of automated software testing, different approaches have been
-tried. A relatively recent overview of the current state of affairs is
-presented by Ammann \cite{ammann2008introduction}. In this project, we face
-the problem of automated generation and running of test cases based on the
-model of programs. Said models not only reflect the behavior of a given
-program, but also provide assumptions and assertions that should be respected.
-
-% Other examples of automated testing: fuzzers (American Fuzzy Lop) \cite{takanen2008fuzzing},
-% or even QuickCheck to some extent
+Saying that this project takes a testing approach is not precise,
+since many methodologies coexist in the field of automated software testing. A
+relatively recent overview of the current state of affairs is presented by Ammann
+\cite{ammann2008introduction}. In this project, we generate and run test cases
+based on models of programs. Said models not only reflect the behavior of a
+given program, but also provide assumptions and assertions that should be respected.
 
 \section{The Verificaction Tool}
 
@@ -413,7 +409,27 @@ Sound, but definitely not complete.
 
 \section{Related Work}
 
-TODO
+In this project we take a testing approach in which test cases are generated
+randomly. An interesting approach similar to ours has been tried by Near and Jackson
+\cite{rubicon}, who perform bounded verification of Ruby on Rails applications
+using a tool called Rubicon. However, instead of using QuickCheck as a backend,
+they use Alloy to do the checking \cite{alloy} (therefore it should be considered
+a case of bounded verification instead of testing).
+
+Another popular alternative for software verification are SMT solvers, which are
+not only sound but also complete. A good example of practical applications of
+SMT solvers is presented by Lahiri and Qadeer \cite{Lahiri}, who verify correct
+memory management of C programs based on a weakest precondition calculation.
+
+An interesting technique associated to the world of testing is fuzzing \cite{takanen2008fuzzing}.
+One of the main benefits of fuzzers is that they are highly automated and
+produce remarkable results. For instance, American Fuzzy Lop (AFL) has a "trophy case"
+with more than 100 bugs found in popular open source software such as PHP, nginx, QEMU
+and VLC \cite{afl}. However, a limitation of fuzzing is that it is designed to find
+inputs that make programs crash, instead of verifying that certain properties hold.
+
+Finally, D'silva et al present a survey of automated techniques for formal software
+verification, which may be of interest for the reader \cite{d2008survey}.
 
 \section{Conclusion}
 
@@ -424,6 +440,15 @@ There is still the question if there is a reliable method of generating a GCL
 specification to test.
 
 Limitations: existential quantification, ...
+
+An interesting observation is that many of the problems we faced when building
+our tool are active topics in the research community:
+
+\begin{itemize}
+\item Obtain a model from a program
+\item Analyze the model to determine properties that must hold
+\item Use a solving technique to determine whether the required properties always hold
+\end{itemize}
 
 \bibliographystyle{plain}
 \bibliography{bibliography}
