@@ -10,6 +10,7 @@ import Util
 
 import Control.Monad.State
 import qualified Data.Map as Map
+import Data.Maybe (fromJust)
 import qualified Data.Set as Set
 import Test.QuickCheck
 
@@ -114,23 +115,27 @@ paths n (Program _ _ _ s) = map fst $ paths' n s
             Assign resultAsgs (map (ref . toName) returns')
 
 -- |Convert a range of values to a QuickCheck generator.
-rangeToGen :: Range -> Gen Literal
-rangeToGen (RangeInt r) = LiteralInt <$> rangeToGenI r
+rangeToGen :: Range -> Maybe (Gen Literal)
+rangeToGen r
+    | isEmpty r = Nothing
+    | otherwise = Just $ rangeToGen' r
     where
-    rangeToGenI :: IntRange -> Gen Int
-    rangeToGenI range = oneof $ map intervalToGenI range
-    intervalToGenI :: Interval -> Gen Int
-    intervalToGenI (MinInfinite, MaxInfinite) = arbitrary :: Gen Int
-    intervalToGenI (MinInfinite, Bounded upper) = sized (\size ->
-        choose (upper - size, upper))
-    intervalToGenI (Bounded lower, MaxInfinite) = sized (\size ->
-        choose (lower, lower + size))
-    intervalToGenI (Bounded lower, Bounded upper) = elements [lower .. upper]
-rangeToGen (RangeBool r) = LiteralBool <$> rangeToGenB r
-    where
-    rangeToGenB :: BoolRange -> Gen Bool
-    rangeToGenB = elements . Set.toList
-rangeToGen (RangeArray r) = pure $ LiteralArray r
+    rangeToGen' (RangeInt r) = LiteralInt <$> rangeToGenI r
+        where
+        rangeToGenI :: IntRange -> Gen Int
+        rangeToGenI range = oneof $ map intervalToGenI range
+        intervalToGenI :: Interval -> Gen Int
+        intervalToGenI (MinInfinite, MaxInfinite) = arbitrary :: Gen Int
+        intervalToGenI (MinInfinite, Bounded upper) = sized (\size ->
+            choose (upper - size, upper))
+        intervalToGenI (Bounded lower, MaxInfinite) = sized (\size ->
+            choose (lower, lower + size))
+        intervalToGenI (Bounded lower, Bounded upper) = elements [lower .. upper]
+    rangeToGen' (RangeBool r) = LiteralBool <$> rangeToGenB r
+        where
+        rangeToGenB :: BoolRange -> Gen Bool
+        rangeToGenB = elements . Set.toList
+    rangeToGen' (RangeArray r) = pure $ LiteralArray r
 
 -- |Represents the values we chose for variables.
 type Instantiations = Map.Map AsgTarget Literal
@@ -179,9 +184,9 @@ type Checker = Gen Instantiations -> Gen CheckResult
 -- |Instantiate the free variables of a predicate and check that it holds.
 -- Uses 'Gen' to convert ranges of acceptable values to a single value.
 testPredicate :: Predicate -> Gen CheckResult
-testPredicate basePredicate
-    | any isEmpty ranges = pure NoCases
-    | otherwise = quantifiedCases normalizedPredicate instantiations
+testPredicate basePredicate = case instantiations of
+                                Nothing -> pure NoCases
+                                Just i  -> quantifiedCases normalizedPredicate i
     where
     normalizedPredicate :: Predicate
     normalizedPredicate = normalize basePredicate
@@ -200,7 +205,8 @@ testPredicate basePredicate
     quantify :: Quantifier -> BoundVariable -> Predicate -> Checker -> Checker
     quantify q (Variable name ty) pred checkPredicate instantiation = do
         -- TODO: infer ranges
-        value <- rangeToGen $ fullRangeFor ty
+        -- we can use fromJust here because we are using full ranges
+        value <- fromJust $ rangeToGen $ fullRangeFor ty
         let makeInstantiation = Map.insert (NameTarget name) value
         let instantiation' = makeInstantiation <$> instantiation
         results <- replicateM 100 $ checkPredicate instantiation'
@@ -256,10 +262,10 @@ testPredicate basePredicate
             Left missing -> target
             Right result -> ArrTarget arr $ LiteralExpr $ result
 
-    instantiations :: Gen (Map.Map AsgTarget Literal)
-    instantiations = copyAliases aliases <$> rangeInstantiations
-    rangeInstantiations :: Gen (Map.Map AsgTarget Literal)
-    rangeInstantiations = mapM rangeToGen ranges
+    instantiations :: Maybe (Gen (Map.Map AsgTarget Literal))
+    instantiations = (fmap (copyAliases aliases)) <$> rangeInstantiations
+    rangeInstantiations :: Maybe (Gen (Map.Map AsgTarget Literal))
+    rangeInstantiations = sequence <$> mapM rangeToGen ranges
     (ranges, aliases) = Map.mapEither id $ allRanges `unionAliasRange` knownAliases
     knownAliases :: AliasMap
     knownAliases = nonTrivAlias True normalizedPredicate
