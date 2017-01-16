@@ -201,9 +201,9 @@ instantiations of the quantifiers, normalizing will show exactly which
 quantifiers need to be instantiated.
 
 By discarding all universal quantifiers in front of the WLP, we do not have to
-handle these seperately, but as free variables. A formula without quantifiers
+handle these separately, but as free variables. A formula without quantifiers
 and instantiations for all free variables is very easy to decide, while many
-formulae with quantifiers are undecidable.
+formulas with quantifiers are undecidable.
 
 Additionally, we do some rewriting on the predicate to simplify it. These steps
 include removing double negations and reducing expressions with constants,
@@ -251,7 +251,7 @@ the previous generator, feeds it to the WLP and ensures that it holds.
 
 In case any of the ranges is empty, we know that the precondition cannot be
 satisfied or the postcondition is always satisfied. This means that the
-\texttt{Property} always holds, and we immediately report a success.
+\texttt{Property} always holds, and we immediately report a success (FIXME: is this true?).
 
 However, in most cases, the ranges are not empty and we try to find a counterexample
 based on the generated instantiations. That is, for each generated set of variable
@@ -269,10 +269,38 @@ consistently, so $a[i]$ and $a[j]$ will always be the same value if $i = j$.
 \texttt{evaluateClosed} function in \texttt{Eval.hs}).
 \end{enumerate}
 
+When evaluating the WLP expression there are two possibilities (FIXME: is this correct?):
+
+\begin{enumerate}
+\item There are no existential quantifiers: this means that all variables are
+universally quantified. In this case, finding a counter example proves that
+the WLP is false.
+\item There is at least one existential quantifier: in this case, the only way
+to prove that the WLP is false is by proving it for every possible instance of
+the existentially quantified variable (FIXME: this effectively means that it is
+almost always impossible to prove the WLP false... we could as well ignore WLPs
+with existential quantification).
+\end{enumerate}
+
+Unfortunately, QuickCheck is designed around universal quantification, which means
+that it provides no straightforward way to deal with existential quantifiers.
+For this reason, we had to extend QuickCheck with additional types and functions
+in order to meet our needs.
+
 \section{Results}
 
-At least discuss the examples that you are requested
-to solve, and how you solve them.
+Example E (base implementation)
+
+minind (base implementation)
+
+swap (array assignment)
+
+sort (program call)
+
+loop with invariant
+
+Non-determinism! Sometimes a test produces the expected result, and sometimes it doesn't!
+Sound, but definitely not complete.
 
 \section{Related Work}
 
@@ -280,7 +308,12 @@ TODO
 
 \section{Conclusion}
 
-Best conclusion ever
+The resulting verification tool is sound but incomplete.
+
+There is still the question if there is a reliable method of generating a GCL
+specification to test.
+
+Limitations: existential quantification, ...
 
 \bibliographystyle{plain}
 \bibliography{bibliography}
