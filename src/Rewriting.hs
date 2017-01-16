@@ -89,10 +89,19 @@ instance FreeVars Expression where
         right' = replace right substs
     replace (Negation e) substs = Negation $ replace e substs
     replace (Index a i) substs = Index (replace a substs) $ replace i substs
-    replace (Repby a i e) substs = Repby (replace a substs) (replace i substs) (replace e substs)
-    replace f@(Quantify q v@(Variable name _) e) substs = Quantify q v $ replace e substs'
+    replace (Repby a i e) substs
+        = Repby (replace a substs) (replace i substs) (replace e substs)
+    replace f@(Quantify q (Variable name ty) expr) substs
+        = Quantify q v $ replace e substs'
         where
         substs' = Map.delete name substs
+        -- Prevent the name from accidentally getting bound by the substitutions
+        (Quantify _ v e) = if name `Set.member` freeInSubsts
+            then (Quantify q (Variable freshName ty) freshE)
+            else f
+        freeInSubsts = Set.map toName $ allFreeVars $ Map.elems substs'
+        freshName = head $ filter (not . (`Set.member` freeInSubsts)) ["x" ++ show n | n <- [1..]]
+        freshE = replace expr (Map.singleton name (NameExpr freshName))
 
 instance FreeVars Statement where
     -- |Determine all free variables of the statement

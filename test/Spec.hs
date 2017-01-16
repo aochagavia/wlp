@@ -178,6 +178,13 @@ prop_asgTestPaths = once $ foundPaths === expectedPaths
             ]
         ]
 
+-- |Substituting within a quantifier shouldn't bind variables.
+prop_substituteBound :: Property
+prop_substituteBound = once $ expectedWLP === foundWLP
+    where
+    expectedWLP = forall "x1" int $ ref "x" ==. ref "x1"
+    foundWLP = wlp' (assignN ["y"] [ref "x"]) $ forall "x" int $ ref "y" ==. ref "x"
+
 exampleProgramIsWrong :: IO CheckResult
 exampleProgramIsWrong = wlpCheck exampleProgram 7
 
