@@ -112,8 +112,12 @@ instance FreeVars Statement where
     freeVars (Assume expr) = freeVars expr
     freeVars (Assign vars exprs) = Set.fromList vars `Set.union` allFreeVars exprs
     freeVars (Sequence stmt1 stmt2) = freeVars stmt1 `Set.union` freeVars stmt2
-    freeVars (If cond stmt1 stmt2) = freeVars cond `Set.union` freeVars stmt1 `Set.union` freeVars stmt2
-    freeVars (While inv cond stmt) = freeVars inv `Set.union` freeVars cond `Set.union` freeVars stmt
+    freeVars (If cond stmt1 stmt2)
+        = freeVars cond `Set.union` freeVars stmt1 `Set.union` freeVars stmt2
+    freeVars (While Nothing cond stmt)
+        = freeVars cond `Set.union` freeVars stmt
+    freeVars (While (Just inv) cond stmt)
+        = freeVars inv `Set.union` freeVars cond `Set.union` freeVars stmt
     freeVars (Var excluded stmt) = Set.filter isStillFree $ freeVars stmt
         where
         -- |Is the target declared in this scope?
@@ -148,7 +152,7 @@ instance FreeVars Statement where
         stmt2' = replace stmt2 substs
     replace (While inv cond stmt) substs = While inv' cond' stmt'
         where
-        inv' = replace inv substs
+        inv' = flip replace substs <$> inv
         cond' = replace cond substs
         stmt' = replace stmt substs
     replace (Var vars stmt) substs = Var vars $ replace stmt substs'

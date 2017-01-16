@@ -20,7 +20,7 @@ type StatementAlgebra a =
     , AsgTargets -> Expressions -> a -- Assign
     , a -> a -> a -- Sequence
     , Expression -> a -> a -> a -- If
-    , Expression -> Expression -> a -> a -- While
+    , (Maybe Expression) -> Expression -> a -> a -- While
     , Variables -> a -> a -- Var
     , Program -> AsgTargets -> Expressions -> a -- ProgramCall
     )

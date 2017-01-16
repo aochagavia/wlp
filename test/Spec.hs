@@ -200,6 +200,20 @@ exampleProgramFixed = program "exampleProgram" [("x", int)] [("y", int)] [
 exampleProgramIsFixed :: IO CheckResult
 exampleProgramIsFixed = wlpCheck exampleProgramFixed 7
 
+-- |The example program E from the assignment, with invariant
+exampleProgramInv :: Program
+exampleProgramInv = program "exampleProgram" [("x", int)] [("y", int)] [
+        assume $ i 0 <=. ref "x",
+        While (Just $ ref "x" >=. i 0) (i 0 <. ref "x") $ foldSequence [
+            assignN ["x"] [ref "x" -. i 1]
+        ],
+        assignN ["y"] [ref "x"],
+        assert $ ref "y" ==. i 0
+    ]
+
+exampleProgramInvWorks :: IO CheckResult
+exampleProgramInvWorks = wlpCheck exampleProgramInv 7
+
 -- |The minind program from assignment 1
 minind :: Program
 minind = program "minind" [("a", Array IntType), ("i", int), ("N", int)] [("r", int)] [
@@ -466,6 +480,7 @@ main = do
 
     putStrLn "The following programs should work:"
     exampleProgramIsFixed
+    exampleProgramInvWorks
     minindWorks
     swapWorks
     swap'Works

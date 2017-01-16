@@ -55,6 +55,11 @@ wlp' (Var vars stmt) q = addForalls $ wlp' (refresh currentFree qFree stmt) q
     currentFree = qFree `Set.intersection` stmtFree
     qFree = Set.map toName (freeVars q)
     stmtFree = Set.map toName (Set.fromList vars)
+-- The invariant works as long as it is a correct invariant.
+-- We can't determine whether the invariant is correct,
+-- since that would require us to decide predicate logic
+-- (and an extra Hoare triple: infinite recursion!)
+wlp' (While (Just inv) _ _) q = inv
 -- Note that we don't expect while or if statements to be present in the path,
 -- since they have just been desugared
 wlp' stmt q = error $ "Statement " ++ show stmt ++ " has no wlp defined!"
@@ -81,16 +86,20 @@ paths n (Program _ _ _ s) = map fst $ paths' n s
         (path1, length1) <- paths' (n - 1) s1
         (path2, length2) <- paths' (n - 1 - length1) s2
         return (Sequence path1 path2, length1 + length2 + 1)
+    -- Try either path through the If.
     paths' n s@(If cond then_ else_) = thenPaths ++ elsePaths
         where
         makeThenPath (path, length) = (assume cond `Sequence` path, length + 1)
         makeElsePath (path, length) = (assume (neg cond) `Sequence` path, length + 1)
         thenPaths = makeThenPath <$> paths' (n-1) then_
         elsePaths = makeElsePath <$> paths' (n-1) else_
-    paths' n s@(While inv cond body) = breakPath : continuePaths
-        where  -- FIXME: is assert inv correct below? (see breakPath, makeContinuePath)
-        breakPath = (assert inv `Sequence` assume (neg cond), 0)
-        makeContinuePath (path, length) = (assert inv `Sequence` assume cond `Sequence` path, length + 1)
+    -- Handle loops with invariants in the WLP.
+    paths' n s@(While (Just _) _ _) = [(s, 1)]
+    -- While without invariant: use finite unfolding.
+    paths' n s@(While Nothing cond body) = breakPath : continuePaths
+        where
+        breakPath = (assume (neg cond), 0)
+        makeContinuePath (path, length) = (assume cond `Sequence` path, length + 1)
         continuePaths = makeContinuePath <$> paths' (n-1) (body `Sequence` s)
     paths' n (Var vars stmt) = do
         (path, length) <- paths' n stmt

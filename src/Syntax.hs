@@ -140,9 +140,9 @@ data Statement
         -- which gets passed to the other AST-building functions.
     | If Expression Statement Statement
         -- ^Conditional execution.
-    | While Expression Expression Statement
+    | While (Maybe Expression) Expression Statement
         -- ^Repeated execution.
-        -- Note: the first expression is the invariant
+        -- Note: the first expression is an optional invariant.
     | Var Variables Statement
         -- ^Local variable declaration
     | ProgramCall Program AsgTargets Expressions
@@ -162,7 +162,10 @@ indent n (Assume expr) = indentation n ++ "assume " ++ show expr
 indent n (Assign ts es) = indentation n ++ show ts ++ " = " ++ show es
 indent n (Sequence s1 s2) = indent n s1 ++ ";\n" ++ indent n s2
 indent n (If c t e) = indentation n ++ "if " ++ show c ++ block n t ++ " else" ++ block n e
-indent n (While i c b) = indentation n ++ "while [" ++ show i ++ "] " ++ show c ++ block n b
+indent n (While Nothing c b)
+    = indentation n ++ "while " ++ show c ++ block n b
+indent n (While (Just i) c b)
+    = indentation n ++ "while [" ++ show i ++ "] " ++ show c ++ block n b
 indent n (Var vs b) = indentation n ++ "var " ++ show vs ++ block n b
 indent n (ProgramCall p ts es) = indentation n ++ show ts ++ " = " ++ name p ++ " " ++ show es
 
@@ -256,7 +259,7 @@ if_ :: Expression -> [Statement] -> [Statement] -> Statement
 if_ cond thens elses = If cond (foldSequence thens) (foldSequence elses)
 -- |A datatype-agnostic way to write the constructor.
 while :: Expression -> [Statement] -> Statement
-while cond body = While (b True) cond $ foldSequence body
+while cond body = While Nothing cond $ foldSequence body
 -- |A datatype-agnostic way to write the constructor.
 var :: [(Name, Type)] -> [Statement] -> Statement
 var vars stmts = Var (toVariables vars) $ foldSequence stmts
