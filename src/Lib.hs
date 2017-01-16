@@ -198,15 +198,15 @@ testPredicate basePredicate = quantifiedCases normalizedPredicate instantiations
     normalizedPredicate :: Predicate
     normalizedPredicate = normalize basePredicate
 
-    -- |Evaluate a quantifier-free predicate with free variables
-    -- (therefore, it should act as a Forall.)
+    -- |Evaluate a quantifier-free predicate with no free variables.
+    -- It should be sure of its result.
     conclude :: Predicate -> Checker
     conclude pred Nothing = pure $ NoCases -- Can't instantiate, so don't check.
     conclude pred (Just instantiationGen) = do
         instantiation <- instantiationGen
         let outcome = runCase pred instantiation
         return $ if outcome
-            then SuccessForall pred
+            then SuccessExists pred instantiation
             else Counterexample pred instantiation
 
     -- |Add a new quantifier to the test.
