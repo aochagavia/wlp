@@ -142,6 +142,10 @@ checker would reject all loops. Given two paths with different iteration counts,
 no (consistent) precondition would satisfy an assertion that both paths will
 be executed, but there are preconditions that either path may be taken.
 
+\subsubsection*{While with invariant}
+
+FIXME: what happens in this case?
+
 \subsubsection*{Program calls}
 
 We handle program calls by including the code of the called program in a path.
@@ -316,9 +320,9 @@ in order to meet our needs. These extensions are defined in \texttt{Checker.hs}.
 \section{Results}
 
 We applied the checker to various programs to determine how effective our design is on practical problems. We define a path to be tested \emph{adequately} when it is tested with a relevant case. In the ideal case, every program path should be tested adequately. With these test programs, we want to show that the concessions we made do not result in practical problems.
-
+\item Example E (base implementation)
 \subsection{Loops and assignment: example E}
-
+\item swap (array assignment)
 The first program we tested our verifier on was Program \ref{exampleProgram}.
 \begin{algorithm}\label{exampleProgram}
 \caption{Example program E}
@@ -331,9 +335,7 @@ The first program we tested our verifier on was Program \ref{exampleProgram}.
 \Assert $y = 0$
 \end{algorithmic}
 \end{algorithm}
-
 Note that the program does not have a valid precondition: if $x$ is equal to $-1$, the while-loop is bypassed and so $y$ becomes $-1$. Our tester correctly reports a failure with the output \texttt{Failed: Counterexample ((-1 <= x) /\ (x <= 0)) => (x == 0) (fromList [(x,-1)])}, i.e. the WLP predicate $-1 \leq x \leq \implies x = 0$ has the counterexample $x = -1$. Changing the precondition to $0 \leq x$ causes the verifier to correctly accept the program.
-
 \subsection{Array indexing: minind}
 
 To check that array indexing works as expected, we tested our verifier against Program \ref{minind}.
@@ -405,7 +407,7 @@ FIXME!
 A test case for more advanced quantifier handling.
 
 Non-determinism! Sometimes a test produces the expected result, and sometimes it doesn't!
-Sound, but definitely not complete.
+Sound, but definitely not complete. Wait a second... We are not even sound, right?
 
 \section{Related Work}
 
@@ -449,6 +451,9 @@ our tool are active topics in the research community:
 \item Analyze the model to determine properties that must hold
 \item Use a solving technique to determine whether the required properties always hold
 \end{itemize}
+
+Therefore, this project is a great way to get acquainted with concepts that play
+an important role in current research.
 
 \bibliographystyle{plain}
 \bibliography{bibliography}
