@@ -155,9 +155,9 @@ fullRangeFor (Array prim) = RangeArray $ fullRangeFor (Primitive prim)
 prenex :: Predicate -> Predicate
 prenex = foldExpression (LiteralExpr, NameExpr, op, neg, Index, Repby, Quantify)
     where
-    -- Refresh (only) the given variable
-    refresh' :: (FreeVars syntax, Bindable var) => var -> syntax -> syntax
-    refresh' var expr = refresh (Set.singleton $ toName var) expr
+    -- Refresh (only) the given variable (avoiding having it duplicate the others)
+    refresh' :: (FreeVars syntax, Bindable var) => var -> syntax -> syntax -> syntax
+    refresh' var toAvoid expr = refresh (Set.singleton $ toName var) (Set.map toName $ freeVars toAvoid) expr
     -- Replaces any free instances of the given variable
     -- Since we get a lot of double negations, eliminate them
     neg (Negation p) = p
@@ -167,20 +167,20 @@ prenex = foldExpression (LiteralExpr, NameExpr, op, neg, Index, Repby, Quantify)
     -- Pull quantifiers outside of operators
     -- (∀p) /\ q === ∀(p /\ q) and symmetrically, and dually
     op Wedge (Quantify qu var p) q
-        = Quantify qu var $ op Wedge p $ refresh' var q
+        = Quantify qu var $ op Wedge p $ refresh' var p q
     op Wedge q (Quantify qu var p)
-        = Quantify qu var $ op Wedge p $ refresh' var q
+        = Quantify qu var $ op Wedge p $ refresh' var p q
     op Vee (Quantify qu var p) q
-        = Quantify qu var $ op Vee p $ refresh' var q
+        = Quantify qu var $ op Vee p $ refresh' var p q
     op Vee q (Quantify qu var p)
-        = Quantify qu var $ op Vee p $ refresh' var q
+        = Quantify qu var $ op Vee p $ refresh' var p q
     -- (p => q) === (~p \/ q), combined with the rules above
     op Implies (Quantify ForAll var p) q
-        = Quantify Exists var $ op Implies (refresh' var p) q
+        = Quantify Exists var $ op Implies p $ refresh' var p q
     op Implies (Quantify Exists var p) q
-        = Quantify ForAll var $ op Implies (refresh' var p) q
+        = Quantify ForAll var $ op Implies p $ refresh' var p q
     op Implies p (Quantify qu var q)
-        = Quantify qu var $ op Implies (refresh' var p) q
+        = Quantify qu var $ op Implies (refresh' var q p) q
     op o p q = Operated o p q
 
 -- |Normalize a predicate to eliminate various implications and trivial truths.

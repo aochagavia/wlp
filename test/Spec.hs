@@ -401,7 +401,7 @@ prop_normalizeIsEquivalent = forAll (arbitraryTyped bool) doCheck
 -- |Refreshing should only refresh the given free variables
 prop_refreshKeepsVars :: Property
 prop_refreshKeepsVars = forAll (arbitraryTyped bool :: Gen Expression) $ (\expr ->
-        freeVars expr == freeVars (refresh Set.empty expr))
+        freeVars expr == freeVars (refresh Set.empty Set.empty expr))
 
 -- |Make sure the wlp after assignment of arrays is calculated correctly
 prop_wlpArrayAssign :: Property

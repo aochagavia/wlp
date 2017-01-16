@@ -42,20 +42,21 @@ class FreeVars syntax where
     -- |Replace any free variables in the map with the given expression.
     -- TODO: make this take Map.Map AsgTarget Expression?
     replace :: syntax -> Map.Map Name Expression -> syntax
-    -- |Give new names to all free variables in the syntax that match the exclusion list.
-    refresh :: Set.Set Name -> syntax -> syntax
-    refresh exclude expr = replace expr freeToFresh
+    -- |Give new names to all the given free variables.
+    -- The names will not match any of the names in the exclusion list afterward.
+    refresh :: Set.Set Name -> Set.Set Name -> syntax -> syntax
+    refresh toRefresh exclude expr = replace expr freeToFresh
         where
         shouldRefresh :: Name -> Bool
-        shouldRefresh name = anySameName name exclude
-        anySameName :: (Bindable v, Bindable w) => v -> Set.Set w -> Bool
-        anySameName v = Set.fold (\w -> (|| sameName v w)) False
+        shouldRefresh = anySameName toRefresh
+        anySameName :: (Bindable v, Bindable w) => Set.Set w -> v -> Bool
+        anySameName toMatch v = Set.fold (\w -> (|| sameName v w)) False toMatch
         oldVars = Set.map toName $ freeVars expr
         newVars = ["x" ++ show n | n <- [1..]]
         -- The bound variables to replace
         toReplace = filter shouldRefresh $ Set.toList oldVars
         -- Don't replace the variables with bound variables
-        replaceWith = map ref $ filter (not . shouldRefresh) newVars
+        replaceWith = map ref $ filter (not . anySameName (exclude `Set.union` toRefresh)) newVars
         freeToFresh = Map.fromList $ zip toReplace replaceWith
 
 -- |Replace the variable if it occurs in the map, keep it the same otherwise.
@@ -92,12 +93,13 @@ instance FreeVars Expression where
     replace (Repby a i e) substs
         = Repby (replace a substs) (replace i substs) (replace e substs)
     replace f@(Quantify q (Variable name ty) expr) substs
-        = Quantify q v $ replace e substs'
+        = result
         where
+        result = Quantify q v $ replace e substs'
         substs' = Map.delete name substs
         -- Prevent the name from accidentally getting bound by the substitutions
-        (Quantify _ v e) = if name `Set.member` freeInSubsts
-            then (Quantify q (Variable freshName ty) freshE)
+        f'@(Quantify _ v e) = if name `Set.member` freeInSubsts
+            then Quantify q (Variable freshName ty) freshE
             else f
         freeInSubsts = Set.map toName $ allFreeVars $ Map.elems substs'
         freshName = head $ filter (not . (`Set.member` freeInSubsts)) ["x" ++ show n | n <- [1..]]

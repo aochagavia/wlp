@@ -44,7 +44,7 @@ wlp' (Sequence stmt1 stmt2) q = wlp' stmt1 $ wlp' stmt2 q
 wlp' (Assert condition) q = condition /\. q
 wlp' (Assume condition) q = condition =>. q
 -- Local variables get put in Forall so they don't clash with those in the condition
-wlp' (Var vars stmt) q = addForalls $ wlp' (refresh currentFree stmt) q
+wlp' (Var vars stmt) q = addForalls $ wlp' (refresh currentFree qFree stmt) q
     where
     addForalls :: Predicate -> Predicate
     addForalls q = Set.foldr addForall q $ stmtFree `Set.difference` qFree
@@ -104,7 +104,7 @@ paths n (Program _ _ _ s) = map fst $ paths' n s
         locals = map (flip Variable int . toName) $ Set.toList $ freeVars code'
         -- Make sure we don't accidentally rescope any of our expressions.
         movedToScope = Set.map toName $ allFreeVars args `Set.union` Set.fromList resultAsgs `Set.union` freeVars prog
-        (Program _ params' returns' code') = refresh movedToScope prog
+        (Program _ params' returns' code') = refresh movedToScope Set.empty prog
         inlined =
             Assign (map (NameTarget . toName) params') args `Sequence`
             -- Note that we can't use the pre-/postconditions since we need to
