@@ -179,14 +179,12 @@ instance Testable CheckResult where
     property = property . isSuccess
 
 -- | The type of functions that check properties of the instantiations.
-type Checker = Gen Instantiations -> Gen CheckResult
+type Checker = Maybe (Gen Instantiations) -> Gen CheckResult
 
 -- |Instantiate the free variables of a predicate and check that it holds.
 -- Uses 'Gen' to convert ranges of acceptable values to a single value.
 testPredicate :: Predicate -> Gen CheckResult
-testPredicate basePredicate = case instantiations of
-                                Nothing -> pure NoCases
-                                Just i  -> quantifiedCases normalizedPredicate i
+testPredicate basePredicate = quantifiedCases normalizedPredicate instantiations
     where
     normalizedPredicate :: Predicate
     normalizedPredicate = normalize basePredicate
@@ -194,7 +192,8 @@ testPredicate basePredicate = case instantiations of
     -- |Evaluate a quantifier-free predicate with free variables
     -- (therefore, it should act as a Forall.)
     conclude :: Predicate -> Checker
-    conclude pred instantiationGen = do
+    conclude pred Nothing = pure $ NoCases -- Can't instantiate, so don't check.
+    conclude pred (Just instantiationGen) = do
         instantiation <- instantiationGen
         let outcome = runCase pred instantiation
         return $ if outcome
@@ -204,11 +203,10 @@ testPredicate basePredicate = case instantiations of
     -- |Add a new quantifier to the test.
     quantify :: Quantifier -> BoundVariable -> Predicate -> Checker -> Checker
     quantify q (Variable name ty) pred checkPredicate instantiation = do
-        -- TODO: infer ranges
         -- we can use fromJust here because we are using full ranges
         value <- fromJust $ rangeToGen $ fullRangeFor ty
         let makeInstantiation = Map.insert (NameTarget name) value
-        let instantiation' = makeInstantiation <$> instantiation
+        let instantiation' = fmap makeInstantiation <$> instantiation
         results <- replicateM 100 $ checkPredicate instantiation'
         return $ quantifyResults q pred makeInstantiation results
 
