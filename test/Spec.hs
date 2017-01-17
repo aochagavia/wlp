@@ -4,6 +4,7 @@ import Control.Applicative
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 
+import Checker
 import Lib
 import Predicate
 import Range
