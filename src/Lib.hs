@@ -50,7 +50,7 @@ wlp' (Var vars stmt) q = addForalls $ wlp' (refresh currentFree qFree stmt) q
     addForalls :: Predicate -> Predicate
     addForalls q = Set.foldr addForall q $ stmtFree `Set.difference` qFree
     addForall :: Name -> Predicate -> Predicate
-    addForall var q = forall var int q
+    addForall var = forall var int
     currentFree, qFree, stmtFree :: Set.Set Name
     currentFree = qFree `Set.intersection` stmtFree
     qFree = Set.map toName (freeVars q)
@@ -132,7 +132,7 @@ testPredicate basePredicate = quantifiedCases normalizedPredicate instantiations
     normalizedPredicate = normalize basePredicate
 
     instantiations :: Maybe (Gen (Map.Map AsgTarget Literal))
-    instantiations = (fmap (copyAliases aliases)) <$> rangeInstantiations
+    instantiations = fmap (copyAliases aliases) <$> rangeInstantiations
     rangeInstantiations :: Maybe (Gen (Map.Map AsgTarget Literal))
     rangeInstantiations = sequence <$> mapM rangeToGen ranges
     (ranges, aliases) = Map.mapEither id $ allRanges `unionAliasRange` knownAliases

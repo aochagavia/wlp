@@ -140,10 +140,10 @@ unionAliases = Map.foldlWithKey insertAliases
             Nothing -> id
             -- (x R k2) <-> (k2 R x), so we also want k1 R x and x R k1
             Just related2 -> insertKey k1 related2 . insertAll related2 k1
-        ) $
+        )
         map
     insertAliases :: Ord k => AliasMap' k -> k -> Set.Set k -> AliasMap' k
-    insertAliases map k1 k2s = Set.fold (\k2 map -> insertAlias map k1 k2) map k2s
+    insertAliases map k1 = Set.fold (\k2 map -> insertAlias map k1 k2) map
 
 -- |Given a map of keys to ranges, and a map of keys that alias other keys,
 -- determine the full amount of aliases and ranges.
@@ -154,7 +154,7 @@ unionAliasRange :: Ord k => RangeMap' k -> AliasMap' k -> Map.Map k (Either Rang
 unionAliasRange ranges aliases = Map.foldlWithKey tryAlias Map.empty ranges
     where
     intersectLeftRange (Left r1) (Left r2) = Left $ intersectRange r1 r2
-    insertRange k v map = Map.insertWith intersectLeftRange k (Left v) map
+    insertRange k v = Map.insertWith intersectLeftRange k (Left v)
     tryAlias map key range = case Map.lookup key aliases >>= Set.lookupMax of
         Nothing -> insertRange key range map -- not an alias, so continue
         Just maximum -> if key < maximum -- so we don't get cycles of aliases

@@ -20,7 +20,7 @@ type StatementAlgebra a =
     , AsgTargets -> Expressions -> a -- Assign
     , a -> a -> a -- Sequence
     , Expression -> a -> a -> a -- If
-    , (Maybe Expression) -> Expression -> a -> a -- While
+    , Maybe Expression -> Expression -> a -> a -- While
     , Variables -> a -> a -- Var
     , Program -> AsgTargets -> Expressions -> a -- ProgramCall
     )
@@ -75,8 +75,8 @@ operate op _ _ = error $ "TypeError: call to " ++ show op ++ " with wrong argume
 -- evaluate the expression to a single value, or a free variable without value.
 evaluateClosed :: Expression -> Map.Map AsgTarget Literal -> Either AsgTarget Literal
 evaluateClosed expr env = fold' expr where
-    fold' (LiteralExpr l) = literal l
-    fold' (NameExpr n) = name n
+    fold' (LiteralExpr l) = Right l -- evaluating a literal always succeeds
+    fold' (NameExpr n) = tryLookup $ NameTarget n
     fold' (Operated op e1 e2) = operated op (fold' e1) (fold' e2)
     fold' (Negation e) = negation (fold' e)
     fold' (Index a e) = index a (fold' e) -- Note that we do this differently!
@@ -86,8 +86,6 @@ evaluateClosed expr env = fold' expr where
     tryLookup target = case Map.lookup target env of
         Just literal -> Right literal
         Nothing -> Left target
-    literal l = Right l
-    name n = tryLookup $ NameTarget n
     operated op e1' e2' = do
         -- Try to look up the values
         e1 <- e1'
@@ -97,7 +95,7 @@ evaluateClosed expr env = fold' expr where
     negation b' = do
         b <- b'
         case b of
-            LiteralBool b1 -> pure $ LiteralBool $ not $ b1
+            LiteralBool b1 -> pure $ LiteralBool $ not b1
             _ -> error "TypeError: call to negation with wrong argument types"
     index :: Expression -> Either AsgTarget Literal -> Either AsgTarget Literal
     index (Repby arrExpr repExpr asgExpr) i' = do

@@ -65,17 +65,17 @@ runCase predicate = literalToBool . fromRight . evaluateClosed predicate . liter
     literalize env = if env' == env then env else literalize env'
         where env' = Map.mapKeys (evaluateAsg env) env
     evaluateAsg :: Map.Map AsgTarget Literal -> AsgTarget -> AsgTarget
-    evaluateAsg env (NameTarget n) = NameTarget n
+    evaluateAsg env (NameTarget n) = NameTarget n -- Only evaluate names.
     evaluateAsg env target@(ArrTarget arr index)
         = case evaluateClosed index env of
-            Left missing -> target
-            Right result -> ArrTarget arr $ LiteralExpr $ result
+            Left missing -> target -- Can't evaluate, so don't replace.
+            Right result -> ArrTarget arr $ LiteralExpr result
 
 
 -- |Evaluate a quantifier-free predicate with no free variables.
 -- It should be sure of its result.
 conclude :: Predicate -> Checker
-conclude pred Nothing = pure $ NoCases -- Can't instantiate, so don't check.
+conclude pred Nothing = pure NoCases -- Can't instantiate, so don't check.
 conclude pred (Just instantiationGen) = do
     instantiation <- instantiationGen
     let outcome = runCase pred instantiation

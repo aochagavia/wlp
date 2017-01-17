@@ -157,7 +157,7 @@ prenex = foldExpression (LiteralExpr, NameExpr, op, neg, Index, Repby, Quantify)
     where
     -- Refresh (only) the given variable (avoiding having it duplicate the others)
     refresh' :: (FreeVars syntax, Bindable var) => var -> syntax -> syntax -> syntax
-    refresh' var toAvoid expr = refresh (Set.singleton $ toName var) (Set.map toName $ freeVars toAvoid) expr
+    refresh' var toAvoid = refresh (Set.singleton $ toName var) (Set.map toName $ freeVars toAvoid)
     -- Replaces any free instances of the given variable
     -- Since we get a lot of double negations, eliminate them
     neg (Negation p) = p
@@ -277,6 +277,6 @@ isQuantifierFree = foldExpression
     , const (&&) -- Operated
     , id -- Negation
     , const $ const True -- Index
-    , const $ const -- Repby
+    , const const -- Repby
     , const $ const $ const False -- Quantify
     )

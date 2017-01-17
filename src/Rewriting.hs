@@ -64,6 +64,17 @@ class FreeVars syntax where
 replaceVar :: Name -> Map.Map Name Expression -> Expression
 replaceVar name substs = fromMaybe (NameExpr name) (Map.lookup name substs)
 
+-- |Replace the variable if its replacement is also a variable.
+-- Errors if the replacement is not a NameExpr.
+-- Also substitutes in the index of an array lookup.
+replaceInVar :: AsgTarget -> Map.Map Name Expression -> AsgTarget
+replaceInVar (NameTarget name) substs
+    = case replaceVar name substs of
+        NameExpr result -> NameTarget result
+replaceInVar (ArrTarget arr index) substs
+    = case replaceVar arr substs of
+        NameExpr result -> ArrTarget result $ replace index substs
+
 -- |Determine all the free variables in a list of syntax items.
 allFreeVars :: FreeVars syntax => [syntax] -> Set.Set AsgTarget
 allFreeVars = concatMapSet freeVars
@@ -126,20 +137,12 @@ instance FreeVars Statement where
         isStillFree (ArrTarget name _) = all (not . sameName name) excluded
     freeVars (ProgramCall prog vars args) = Set.fromList vars `Set.union` allFreeVars args
 
-
     replace Skip _ = Skip
     replace (Assert expr) substs = Assert $ replace expr substs
     replace (Assume expr) substs = Assume $ replace expr substs
     replace (Assign vars exprs) substs = Assign replacedVars replacedExprs
         where
-        replacedVars :: [AsgTarget]
-        replacedVars = map (`replaceVar'` substs) vars
-        replaceVar' :: AsgTarget -> Map.Map Name Expression -> AsgTarget
-        replaceVar' (NameTarget name) substs = case replaceVar name substs of
-            NameExpr result -> NameTarget result
-        replaceVar' (ArrTarget arr index) substs = case replaceVar arr substs of
-            NameExpr result -> ArrTarget result $ replace index substs
-        replacedExprs :: [Expression]
+        replacedVars = map (`replaceInVar` substs) vars
         replacedExprs = map (`replace` substs) exprs
     replace (Sequence stmt1 stmt2) substs = Sequence stmt1' stmt2'
         where
@@ -160,14 +163,7 @@ instance FreeVars Statement where
         substs' = foldr (Map.delete . toName) substs vars
     replace (ProgramCall prog vars exprs) substs = ProgramCall prog replacedVars replacedExprs
         where
-        replacedVars :: [AsgTarget]
-        replacedVars = map (`replaceVar'` substs) vars
-        replaceVar' :: AsgTarget -> Map.Map Name Expression -> AsgTarget
-        replaceVar' (NameTarget name) substs = case replaceVar name substs of
-            NameExpr result -> NameTarget result
-        replaceVar' (ArrTarget arr index) substs = case replaceVar arr substs of
-            NameExpr result -> ArrTarget result $ replace index substs
-        replacedExprs :: [Expression]
+        replacedVars = map (`replaceInVar` substs) vars
         replacedExprs = map (`replace` substs) exprs
 
 instance FreeVars Program where
