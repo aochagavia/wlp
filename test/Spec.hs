@@ -215,6 +215,20 @@ exampleProgramInv = program "exampleProgram" [("x", int)] [("y", int)] [
 exampleProgramInvWorks :: IO CheckResult
 exampleProgramInvWorks = wlpCheck exampleProgramInv 7
 
+-- |The example program E from the assignment, with invariant
+exampleProgramInvWrong :: Program
+exampleProgramInvWrong = program "exampleProgram" [("x", int)] [("y", int)] [
+        assume $ i (-1) <=. ref "x",
+        While (Just $ ref "x" >=. i 0) (i 0 <. ref "x") $ foldSequence [
+            assignN ["x"] [ref "x" -. i 1]
+        ],
+        assignN ["y"] [ref "x"],
+        assert $ ref "y" ==. i 0
+    ]
+
+exampleProgramInvIsWrong :: IO CheckResult
+exampleProgramInvIsWrong = wlpCheck exampleProgramInvWrong 7
+
 -- |The minind program from assignment 1
 minind :: Program
 minind = program "minind" [("a", Array IntType), ("i", int), ("N", int)] [("r", int)] [
@@ -294,11 +308,18 @@ swapWrong = program "swap" [("a", Array IntType), ("i", int), ("j", int)] [("a'"
 swapIsWrong :: IO CheckResult
 swapIsWrong = wlpCheck swapWrong 10
 
--- |A program that doesn't work but is very hard to prove.
+-- |A program that doesn't work but requires quantifiers to prove.
 findNonzeroWrong :: Program
 findNonzeroWrong = program "findNonzero" [("a", Array IntType)] [("i", int)] [
         assume $ neg $ forall "j" int $ ("a" !!. ref "j") ==. i 0,
-        assert $ ("a" !!. ref "j") !=. i 0
+        while (("a" !!. ref "i") ==. i 0) [
+            var [("j", int)] [
+                if_ (("a" !!. ref "j") !=. i 0) [
+                    assignN ["i"] [ref "j"]
+                ] []
+            ]
+        ],
+        assert $ ("a" !!. ref "i") ==. i 0
     ]
 
 findNonzeroIsWrong :: IO CheckResult
@@ -475,6 +496,7 @@ main = do
     runTests
     putStrLn "The following programs should fail:"
     exampleProgramIsWrong
+    exampleProgramInvIsWrong
     minindIsWrong
     swapIsWrong
     findNonzeroIsWrong

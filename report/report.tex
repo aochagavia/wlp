@@ -5,6 +5,14 @@
 \usepackage{polyglossia}
 \usepackage{amsmath}
 \setdefaultlanguage{english}
+\usepackage{xspace}
+
+% For displaying pseudocode/GCL
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\newcommand{\Assert}{\State\textbf{assert}\xspace}
+\newcommand{\Assume}{\State\textbf{assume}\xspace}
+\algblockdefx{Var}{EndVar}[1]{\textbf{var} #1 \textbf{in}}{\textbf{end var}}
 
 % Command to typeset ++
 \newcommand\mdoubleplus{\ensuremath{\mathbin{+\mkern-5mu+}}}
@@ -177,6 +185,12 @@ of the assignment. When the target is an array, we replace the index by an appro
 \texttt{Repby}. Refer to the \texttt{replace} function for the concrete implementation
 details of the replacing algorithm (defined in \texttt{Rewriting.hs}).
 
+We also considered the fact that simultaneous assignment to array indices does
+not work like simultaneous assignment to variables. The statement
+$a[i], a[j] \gets a[j], a[i]$ needs the intermediate result of
+$a \gets \texttt{Repby}\ a, i, a[j]$ to get to the correct result
+$a \gets \texttt{Repby}\ (\texttt{Repby}\ a, j, a[i]), i, a[j]$.
+
 \subsubsection*{While with invariant}
 
 The WLP of a while loop with an invariant is the invariant itself, provided the
@@ -286,7 +300,7 @@ consistently, so $a[i]$ and $a[j]$ will always be the same value if $i = j$.
 When evaluating the WLP expression there are three possibilities:
 
 \begin{enumerate}
-\item The expression starts with a universal quantifier or has a variables:
+\item The expression starts with a universal quantifier or has free variables:
 we try to instantiate the variables to find a counterexample. If we find one, we
 are sure the predicate does not always hold. If we do not find one, we can only
 conclude that there probably is no counterexample that can be found easily.
@@ -301,19 +315,98 @@ instantiations, and be sure about the outcome.
 Unfortunately, QuickCheck is designed around universal quantification, which means
 that it provides no straightforward way to deal with existential quantifiers.
 For this reason, we had to extend QuickCheck with additional types and functions
-in order to meet our needs.
+in order to meet our needs. These extensions are defined in \texttt{Checker.hs}.
 
 \section{Results}
 
-Example E (base implementation)
+We applied the checker to various programs to determine how effective our design is on practical problems. We define a path to be tested \emph{adequately} when it is tested with a relevant case. In the ideal case, every program path should be tested adequately. With these test programs, we want to show that the concessions we made do not result in practical problems.
 
-minind (base implementation)
+\subsection{Loops and assignment: example E}
 
-swap (array assignment)
+The first program we tested our verifier on was Program \ref{exampleProgram}.
+\begin{algorithm}\label{exampleProgram}
+\caption{Example program E}
+\begin{algorithmic}
+\Assume $-1 \leq x$
+\While {$0 < x$}
+	\State $x \gets x - 1$
+\EndWhile
+\State $y \gets x$
+\Assert $y = 0$
+\end{algorithmic}
+\end{algorithm}
 
-sort (program call)
+Note that the program does not have a valid precondition: if $x$ is equal to $-1$, the while-loop is bypassed and so $y$ becomes $-1$. Our tester correctly reports a failure with the output \texttt{Failed: Counterexample ((-1 <= x) /\ (x <= 0)) => (x == 0) (fromList [(x,-1)])}, i.e. the WLP predicate $-1 \leq x \leq \implies x = 0$ has the counterexample $x = -1$. Changing the precondition to $0 \leq x$ causes the verifier to correctly accept the program.
 
-loop with invariant
+\subsection{Array indexing: minind}
+
+To check that array indexing works as expected, we tested our verifier against Program \ref{minind}.
+\begin{algorithm}\label{minind}
+\caption{minind}
+\begin{algorithmic}
+\Assume $N > i \wedge i' = i$
+\Var {min}
+	\State $\textit{min}, r \gets a[i], i$
+	\While {$i < N$}
+		\If {$a[i] < min$}
+			\State $\textit{min}, r \gets a[i], i$
+		\EndIf
+		\State $i \gets i+1$
+	\EndWhile
+\EndVar
+\Assert $\forall j\ [i' \leq j < N \implies a[j] \leq a[r]]$
+\end{algorithmic}
+\end{algorithm}
+
+We inserted an incorrect postcondition in this program. In fact, the correct condition is $\forall j\ [i' \leq j < N \implies a[j] \geq a[r]]$. However, this distinction is only apparent when $i < N - 1$, so there are still program paths that result in a WLP that always holds. The verifier can correctly find a counterexample \texttt{(fromList [(N,7), (a,[RangeInt [(MinInfinite,MaxInfinite)]]), (i,5), (i',5), (j,5), (a[i],-27), (a[j],-17), (a[i + 1],-18)])}. The correct postcondition gets accepted by the verifier.
+
+\subsection{Array assignment: swap}
+
+Assignment to arrays requires us to correctly implement assignment to arrays at given indices. We made two variants of a program that swaps the values in an array at two given indices. The first, Program \ref{swapTemp}, uses an intermediate value and the second, Program \ref{swapSimultaneous}, uses a simultaneous assignment.
+
+\begin{algorithm}\label{swapTemp}
+\caption{Swap using a temporary variable}
+\begin{algorithmic}
+\Assume $a[i] = x \wedge a[j] = y$
+\Var {\textit{tmp}}
+\State $\textit{tmp} \gets a[j]$
+\State $a[j] \gets a[i]$
+\State $a[i] \gets \textit{tmp}$
+\EndVar
+\Assert $a[i] = y \wedge a[j] = x$
+\end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}\label{swapSimultaneous}
+\caption{Swap using simultaneous assignment}
+\begin{algorithmic}
+\Assume $a[i] = x \wedge a[j] = y$
+\State $a[i], a[j] \gets a[j], a[i]$
+\Assert $a[i] = y \wedge a[j] = x$
+\end{algorithmic}
+\end{algorithm}
+
+Since this program has only one path, which means we can easily calculate the WLP: $(a[i] = x \wedge a[j] = y) \implies (a[i] = x \wedge \texttt{Repby}\ (\texttt{Repby}\ a, j, a[i]), i, a[j])[i] = y)$. Our program automatically determines that $a[i]$ should have the same value as $x$ and $a[j]$ the same value as $y$ to satisfy the precondition.
+
+\subsection{Program call: sort}
+
+We also applied our verifier to a program that called other programs. To be more specific, the selection sorting program of Program \ref{sort} calls corrected versions of Programs \ref{minind} and \ref{swapTemp}.
+
+\begin{algorithm}\label{sort}
+\caption{Selection sort}
+\begin{algorithmic}
+FIXME!
+\end{algorithmic}
+\end{algorithm}
+FIXME
+
+\subsection{Loop with invariant: ???}
+
+FIXME!
+
+\subsection{Quantification: findNonzero}
+
+A test case for more advanced quantifier handling.
 
 Non-determinism! Sometimes a test produces the expected result, and sometimes it doesn't!
 Sound, but definitely not complete.
@@ -324,7 +417,8 @@ TODO
 
 \section{Conclusion}
 
-The resulting verification tool is sound but incomplete.
+The resulting verification tool is sound but incomplete. In our defence,
+verifying soundly and completely is undecidable.
 
 There is still the question if there is a reliable method of generating a GCL
 specification to test.
