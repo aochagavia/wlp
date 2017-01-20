@@ -6,6 +6,7 @@
 \usepackage{amsmath}
 \setdefaultlanguage{english}
 \usepackage{xspace}
+\usepackage{fullpage}
 
 % For displaying pseudocode/GCL
 \usepackage{algorithm}
@@ -53,10 +54,12 @@ Based on the GCL model of a program, our tool performs the following steps:
 \begin{enumerate}
 \item Calculate the possible execution paths up to a given length (performed by
 the \texttt{path} function in \texttt{Lib.hs}).
-\item For each path, calculate the WLP taking assumptions and assertions into account
-(performed by the \texttt{wlp}, \texttt{wlp'} and \texttt{wlpPath} functions in \texttt{Lib.hs}).
-\item For each WLP, calculate a QuickCheck \cite{claessen2011quickcheck} \texttt{Property}
-(performed by the \texttt{testPredicate} function in \texttt{Lib.hs}).
+\item For each path, calculate the Weakest Liberal Precondition (WLP) % TODO: cite a source here?
+taking assumptions and assertions into account (performed by the \texttt{wlp},
+\texttt{wlp'} and \texttt{wlpPath} functions in \texttt{Lib.hs}).
+\item For each WLP, calculate a QuickCheck \cite{claessen2011quickcheck}
+generator of test cases (performed by the \texttt{testPredicate} function in
+\texttt{Lib.hs}).
 \item For each \texttt{Property}, feed it to QuickCheck so it can be tested (see
 \texttt{Spec.hs} for examples).
 \end{enumerate}
@@ -68,9 +71,10 @@ one.
 
 Since our modeling language supports control flow constructs, a program may have
 multiple execution paths depending on the initial values of the variables and
-parameters. Furthermore, programs may loop infinitely and therefore can be traversed
-by execution paths of infinite length. Given the undecidability of the halting
-problem, we introduce an artificial length limit that a path is not allowed to exceed.
+parameters. Furthermore, programs may loop indefinitely and therefore can be
+traversed by execution paths of infinite length. Given the undecidability of the
+halting problem, we introduce an artificial length limit that a path is not
+allowed to exceed.
 
 When calculating execution paths, we insert \texttt{assume} and \texttt{assert}
 statements in order to drive the WLP calculation later on. Since they are not
@@ -164,12 +168,13 @@ implementations for \texttt{Assign} and \texttt{Var} are less straightforward.
 \subsubsection*{Var}
 
 The WLP of a \texttt{Var} statement is equivalent to the WLP of its inner
-statement. This seems trivial at first, but we need to consider the fact that
-the declared variables may be shadowing already existing names. In order to
-avoid that, we rename all declared variables that shadow existing names in
-such a way that they get a unique one. This is done by the \texttt{refresh}
-function (defined in \texttt{Rewriting.hs}). Then we apply the $\forall$
-quantifier to any remaining variables.
+statement up to the introduction of new variables. This seems trivial at
+first, but we need to consider the fact that the declared variables may be
+shadowing already existing names. In order to avoid that, we rename all declared
+variables that shadow existing names in such a way that they get a unique one.
+This is done by the \texttt{refresh} function (defined in
+\texttt{Rewriting.hs}). Then we apply the $\forall$ quantifier to any remaining
+variables.
 
 % Idea: write an appendix telling more about how refresh works?
 
@@ -177,13 +182,15 @@ quantifier to any remaining variables.
 
 The WLP of assignment involves replacing names by expressions in the postcondition.
 When the target of the assignment is a name, we replace the given name by the value
-of the assignment. When the target is an array, we replace the index by an appropriate
-\texttt{Repby}. Refer to the \texttt{replace} function for the concrete implementation
-details of the replacing algorithm (defined in \texttt{Rewriting.hs}).
+of the assignment. When the target is an array, we replace the indexed
+assignment by an appropriate \texttt{Repby} expression. Refer to the
+\texttt{replace} function for the concrete implementation details of the
+replacing algorithm (defined in \texttt{Rewriting.hs}).
 
 We also considered the fact that simultaneous assignment to array indices does
-not work like simultaneous assignment to variables. The statement
-$a[i], a[j] \gets a[j], a[i]$ needs the intermediate result of
+not work like simultaneous assignment to variables. If the statement 
+$a[i], a[j] \gets a[j], a[i]$ has similar semantics to $x, y \gets y, x$, the
+assignment needs the intermediate result of
 $a \gets \texttt{Repby}\ a, i, a[j]$ to get to the correct result
 $a \gets \texttt{Repby}\ (\texttt{Repby}\ a, j, a[i]), i, a[j]$.
 
@@ -249,7 +256,6 @@ SAT solving, we only consider relatively simple cases.
 
 As an example, let us consider the ranges that would be generated for the following WLP
 expression:
-
 \begin{align*}
 	((0 \leq k \leq 10) \wedge (x = y) \wedge p) \Rightarrow (q \wedge \exists n (1 \leq n \leq 5)).
 \end{align*}
@@ -261,7 +267,9 @@ trivially evaluate to \texttt{True}. Moreover, we want $q$ to be \texttt{False}
 to find a counterexample on the right side of the implication. Note however that
 the range for $n$ is $[1, 5]$, since it suffices to (fully) check this range to
 find a contradiction. The function \texttt{nonTrivRange} calculates these
-ranges.
+ranges. Since many preconditions involve variables depending on other variables,
+we also implemented a function \texttt{nonTrivAlias} that checks when two
+variables should have exactly the same instantiations.
 
 From the ranges we have constructed for the variables, we make QuickCheck
 generators that generate values in the corresponding ranges. If the range turns
@@ -302,7 +310,7 @@ we try to instantiate the variables to find a counterexample. If we find one, we
 are sure the predicate does not always hold. If we do not find one, we can only
 conclude that there probably is no counterexample that can be found easily.
 \item The expression starts with an existential quantifier: we try to instantiate
-the variables to find an example. As with the universal quantifier, we can only
+the variables to find an example. Dually to the universal quantifier, we can only
 be sure of finding an example, and we interpret the failure in a weak sense.
 \item There are no quantifiers: this means that all variables should have been
 instantiated. In this case, we directly evaluate the WLP for the given
@@ -316,14 +324,20 @@ in order to meet our needs. These extensions are defined in \texttt{Checker.hs}.
 
 \section{Results}
 
-We applied the checker to various programs to determine how effective our design is on practical problems. We define a path to be tested \emph{adequately} when it is tested with a relevant case. In the ideal case, every program path should be tested adequately. With these test programs, we want to show that the concessions we made do not result in practical problems.
+We applied the checker to various programs to determine how effective our design
+is on practical problems. We define a path to be tested \emph{adequately} when
+it is tested with a relevant case. In the ideal case, every program path should
+be tested adequately. With these test programs, we want to show that the
+concessions we made do not result in practical problems in reducing the adequacy.
 
 \subsection{Loops and assignment: example E}
 
 The first program we tested our verifier on was Program \ref{exampleProgram}.
+While it has no practical use, it contains the basic loop and assignment
+structure that we designed our verification tool for.
 
-\begin{algorithm}\label{exampleProgram}
-\caption{Example program E}
+\begin{algorithm}
+\caption{Example program E} \label{exampleProgram}
 \begin{algorithmic}
 \Assume $-1 \leq x$
 \While {$0 < x$}
@@ -334,14 +348,21 @@ The first program we tested our verifier on was Program \ref{exampleProgram}.
 \end{algorithmic}
 \end{algorithm}
 
-Note that the program does not have a valid precondition: if $x$ is equal to $-1$, the while-loop is bypassed and so $y$ becomes $-1$. Our tester correctly reports a failure with the output \texttt{Failed: Counterexample ((-1 <= x) /\ (x <= 0)) => (x == 0) (fromList [(x,-1)])}, i.e. the WLP predicate $-1 \leq x \leq \implies x = 0$ has the counterexample $x = -1$. Changing the precondition to $0 \leq x$ causes the verifier to correctly accept the program.
+Note that the program does not have a valid precondition: if $x$ is equal to
+$-1$, the while-loop is bypassed and so $y$ becomes $-1$. Our tool correctly
+reports a failure with the output:\par
+% some fancy formatting  for output with a lot of special characters.
+\verb|Failed: Counterexample ((-1 <= x) /\ (x <= 0)) => (x == 0) (fromList [(x,-1)])|,\\
+which indicates the WLP predicate $-1 \leq x \leq 0 \implies x = 0$ has the
+counterexample $x = -1$. Changing the precondition to $0 \leq x$ causes the
+verifier to correctly accept the program.
 
 \subsection{Array indexing: minind}
 
 To check that array indexing works as expected, we tested our verifier against Program \ref{minind}.
 
-\begin{algorithm}\label{minind}
-\caption{minind}
+\begin{algorithm}
+\caption{minind} \label{minind}
 \begin{algorithmic}
 \Assume $N > i \wedge i' = i$
 \Var {min}
@@ -363,8 +384,8 @@ We inserted an incorrect postcondition in this program. In fact, the correct con
 
 Assignment to arrays requires us to correctly implement assignment to arrays at given indices. We made two variants of a program that swaps the values in an array at two given indices. The first, Program \ref{swapTemp}, uses an intermediate value and the second, Program \ref{swapSimultaneous}, uses a simultaneous assignment.
 
-\begin{algorithm}\label{swapTemp}
-\caption{Swap using a temporary variable}
+\begin{algorithm}
+\caption{Swap using a temporary variable} \label{swapTemp}
 \begin{algorithmic}
 \Assume $a[i] = x \wedge a[j] = y$
 \Var {\textit{tmp}}
@@ -376,8 +397,9 @@ Assignment to arrays requires us to correctly implement assignment to arrays at 
 \end{algorithmic}
 \end{algorithm}
 
-\begin{algorithm}\label{swapSimultaneous}
+\begin{algorithm}
 \caption{Swap using simultaneous assignment}
+\label{swapSimultaneous}
 \begin{algorithmic}
 \Assume $a[i] = x \wedge a[j] = y$
 \State $a[i], a[j] \gets a[j], a[i]$
@@ -385,16 +407,28 @@ Assignment to arrays requires us to correctly implement assignment to arrays at 
 \end{algorithmic}
 \end{algorithm}
 
-Since this program has only one path, we can easily calculate the WLP: $(a[i] = x \wedge a[j] = y) \implies (a[i] = x \wedge \texttt{Repby}\ (\texttt{Repby}\ a, j, a[i]), i, a[j])[i] = y)$. Our program automatically determines that $a[i]$ should have the same value as $x$ and $a[j]$ the same value as $y$ to satisfy the precondition.
+Since thes programs contain only one path, we can easily calculate the WLP: $(a[i] = x \wedge a[j] = y) \implies (a[i] = x \wedge \texttt{Repby}\ (\texttt{Repby}\ a, j, a[i]), i, a[j])[i] = y)$. Our program automatically determines that $a[i]$ should have the same value as $x$ and $a[j]$ the same value as $y$ to satisfy the precondition.
 
 \subsection{Program call: sort}
 
 We also applied our verifier to a program that called other programs. To be more specific, the selection sorting program of Program \ref{sort} calls corrected versions of Programs \ref{minind} and \ref{swapTemp}.
 
-\begin{algorithm}\label{sort}
+\begin{algorithm}
 \caption{Selection sort}
+\label{sort}
 \begin{algorithmic}
-FIXME!
+\Assume $N \geq 0$
+\Var {$i$}
+	\State $i \gets 0$
+	\While{$i < N - 1$}
+		\State $m \gets $\Call{minind}{$a, i + 1, N$}
+		\If{$a[m] < a[i]$}
+			\State $a \gets $\Call{swap}{$a, i, m$}
+		\EndIf
+	\EndWhile
+\EndVar
+\State $a' \gets a$
+\Assert $\forall i [0 \leq i \leq N-1 \implies a[i] \leq a[i+1]]$
 \end{algorithmic}
 \end{algorithm}
 FIXME
