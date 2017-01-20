@@ -112,7 +112,8 @@ instance FreeVars Expression where
         f'@(Quantify _ v e) = if name `Set.member` freeInSubsts
             then Quantify q (Variable freshName ty) freshE
             else f
-        freeInSubsts = Set.map toName $ allFreeVars $ Map.elems substs'
+        freeInSubsts = Map.keysSet substs' `Set.union`
+            (Set.map toName $ allFreeVars $ Map.elems substs')
         freshName = head $ filter (not . (`Set.member` freeInSubsts)) ["x" ++ show n | n <- [1..]]
         freshE = replace expr (Map.singleton name (NameExpr freshName))
 
