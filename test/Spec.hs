@@ -350,7 +350,8 @@ sort = program "sort" [("a", Array IntType), ("N", int)] [("a'", Array IntType)]
                 call ["m"] minind [ref "a", ref "i" +. i 1, ref "N"],
                 if_ (("a" !!. ref "m") <. ("a" !!. ref "i")) [
                     call ["a"] swap' [ref "a", ref "i", ref "m"]
-                ] []
+                ] [],
+                assignN ["i"] [ref "i" +. i 1]
             ]
         ],
         assignN ["a'"] [ref "a"],
