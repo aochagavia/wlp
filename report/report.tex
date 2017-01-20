@@ -428,10 +428,13 @@ We also applied our verifier to a program that called other programs. To be more
 	\EndWhile
 \EndVar
 \State $a' \gets a$
-\Assert $\forall i [0 \leq i \leq N-1 \implies a[i] \leq a[i+1]]$
+\Assert $\forall i [0 \leq i \leq N-1 \implies a'[i] \leq a'[i+1]]$
 \end{algorithmic}
 \end{algorithm}
-FIXME
+
+This was a good test for our verifier, since it contains a lot of variable bindings. During development, we ran into many issues with bound variables that had the same name as different bound variables. Since the paths through this program get resolved to nested declarations of variables and we deliberately included a postcondition with the same variable, we can check that refreshing variables does work.
+
+FIXME: show this is actually tested adequately
 
 \subsection{Loop with invariant: ???}
 
