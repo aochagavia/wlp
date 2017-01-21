@@ -3,25 +3,22 @@ module Range where
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 
+-- ^Define ranges for our literal types and operations on these ranges.
+
+-- |Represents the range of the given literal type.
+-- We use a sum type since expressions are represented untyped.
 data Range = RangeInt IntRange
            | RangeBool BoolRange
            | RangeArray Range
     deriving (Eq, Ord, Show)
 
-data MyInt = MinInfinite
+-- |Represents the endpoint of intervals of integers.
+data InfiniteInt = MinInfinite
            | Bounded Int
            | MaxInfinite
     deriving (Eq, Show)
 
-type BoolRange = Set.Set Bool
--- |A union of integer intervals.
--- The intervals are non-overlapping and increasing, which means:
--- As an invariant, we require that 1 + the upper bound of the n'th element
--- is strictly less than the lower bound of the n+1'th element
-type IntRange = [Interval]
-type Interval = (MyInt, MyInt)
-
-instance Ord MyInt where
+instance Ord InfiniteInt where
     compare MinInfinite MinInfinite = EQ
     compare MinInfinite _ = LT
     compare _ MinInfinite = GT
@@ -30,7 +27,20 @@ instance Ord MyInt where
     compare _ MaxInfinite = LT
     compare (Bounded x) (Bounded y) = compare x y
 
-increment :: MyInt -> MyInt
+-- |While perhaps not the most efficient representation,
+-- treating ranges as sets makes most operations easy to define.
+type BoolRange = Set.Set Bool
+-- |A union of integer intervals.
+-- The intervals are non-overlapping and increasing, which means:
+-- As an invariant, we require that 1 + the upper bound of the n'th element
+-- is strictly less than the lower bound of the n+1'th element
+type IntRange = [Interval]
+-- |Represents the closed interval with respective lower and upper bound.
+type Interval = (InfiniteInt, InfiniteInt)
+
+-- |Move the boundary of an interval up by one integer.
+-- Note that this resuls in an error when the boundary is 'MinInfinite'.
+increment :: InfiniteInt -> InfiniteInt
 increment (Bounded i) = Bounded $ i+1
 increment MaxInfinite = MaxInfinite
 increment MinInfinite = error "Minus infinity has no successor"
@@ -52,20 +62,26 @@ addToIntRange (l1, u1) ((l2, u2):r2)
     -- the overlap may cover every interval, so we have to recurse over the range
     | otherwise = addToIntRange (min l1 l2, max u1 u2) r2
 
+-- |A range consisting of only one boolean value.
 rFalse, rTrue :: Range
 rFalse = RangeBool $ Set.singleton False
 rTrue = RangeBool $ Set.singleton True
 
+-- |A range that contains the bound and everything smaller or greater.
 leftInfinite, rightInfinite :: Int -> Range
 leftInfinite n = RangeInt [(MinInfinite, Bounded n)]
 rightInfinite n = RangeInt [(Bounded n, MaxInfinite)]
 
+-- |The range that consists exactly of the given interval.
+-- For a range that contains only 'n', use 'bounded n n'.
 bounded :: Int -> Int -> Range
 bounded low up = RangeInt [(Bounded low, Bounded up)]
 
+-- |The range that contains every integer except the given one.
 exclude :: Int -> Range
 exclude i = RangeInt [(MinInfinite, Bounded (i-1)), (Bounded (i+1), MaxInfinite)]
 
+-- |Take the union of two ranges, consisting of all values that are in either.
 unionRange :: Range -> Range -> Range
 unionRange (RangeBool b1) (RangeBool b2) = RangeBool $ Set.union b1 b2
 unionRange (RangeInt r1) (RangeInt r2) = RangeInt $ unionIntRange r1 r2
@@ -80,6 +96,7 @@ unionRange (RangeInt r1) (RangeInt r2) = RangeInt $ unionIntRange r1 r2
 
 unionRange _ _ = error "Called unionRange with incompatible ranges"
 
+-- |Take the intersection of two ranges, consisting of all values that are in both.
 intersectRange :: Range -> Range -> Range
 intersectRange (RangeBool b1) (RangeBool b2) = RangeBool $ Set.intersection b1 b2
 intersectRange (RangeInt r1) (RangeInt r2) = RangeInt $ intersectIntRange r1 r2
@@ -100,7 +117,9 @@ unionRanges, intersectRanges :: Ord k => Map.Map k Range -> Map.Map k Range -> M
 unionRanges = Map.intersectionWith unionRange
 intersectRanges = Map.unionWith intersectRange
 
+-- |Represents an abstract map of ranges, refined by 'Predicate.RangeMap'.
 type RangeMap' k = Map.Map k Range
+-- |Represents an abstract map of aliases, refined by 'Predicate.AliasMap'.
 type AliasMap' k = Map.Map k (Set.Set k)
 
 -- |Alias the first key to the second key and the other way around.

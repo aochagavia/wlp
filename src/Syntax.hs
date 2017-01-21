@@ -7,7 +7,6 @@ import Util
 -- Various smaller-scale syntax such as tokens and lists of them.
 
 -- |We represent a variable name with a plain string.
--- (TODO: should we use another type?)
 type Name = String
 -- |Input and output of a 'Program'.
 type Parameters = [Variable]
@@ -35,6 +34,7 @@ instance Show AsgTarget where
     show (NameTarget n) = n
     show (ArrTarget n expr) = n ++ "[" ++ show expr ++ "]"
 
+-- |Is this a 'NameTarget' instead of an 'ArrTarget'?
 isNameTarget :: AsgTarget -> Bool
 isNameTarget (NameTarget _) = True
 isNameTarget _ = False
@@ -149,12 +149,17 @@ data Statement
         -- ^Call a program with a given list of arguments and store the results
     deriving (Eq, Ord)
 
+-- |Indent the string with a given number of tabs.
+-- Used for formatting statements.
 indentation :: Int -> String
 indentation = flip replicate '\t'
 
+-- |Start a block at the given indentation level.
+-- Note that the block opening brace is not on a new line.
 block :: Int -> Statement -> String
 block n stmt = " {\n" ++ indent (n+1) stmt ++ "\n" ++ indentation n ++ "}"
 
+-- |Nicely format a statement at a given indentation level.
 indent :: Int -> Statement -> String
 indent n Skip = indentation n ++ "skip"
 indent n (Assert expr) = indentation n ++ "assert " ++ show expr
@@ -182,7 +187,6 @@ data Expression
         -- ^Apply an operator to two expressions.
     | Negation Expression
         -- ^Negation of a proposition.
-        -- TODO: this feels too hard-coded compared to 'BinaryOp'.
     | Index Expression Expression
         -- ^Look up an index in an array.
     | Quantify Quantifier BoundVariable Expression

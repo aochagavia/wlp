@@ -14,6 +14,8 @@ import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Test.QuickCheck
 
+-- ^Implements the verification-specific aspects of our verification tool.
+
 -- |Calculate the wlp of a program based on the given postcondition.
 -- Usually, you would want to use wlpCheck since it can verify the wlp holds.
 wlp :: Program -> Expression -> Expression
@@ -30,7 +32,6 @@ wlp' Skip q = q
 wlp' (Assign targets exprs) q = replace q $ replacements $ zip targets exprs
     where
     -- Recursively build the replacements so we can handle sequentiality.
-    -- TODO: use some higher order functions to make it a bit more readable.
     replacements :: [(AsgTarget, Expression)] -> Map.Map Name Expression
     replacements [] = Map.empty
     replacements ((NameTarget name, val) : targets)

@@ -30,9 +30,9 @@ nonTrivRange bool (NameExpr name)
         -- We got here through boolean operators, so it must be a boolean
 nonTrivRange bool (Index (NameExpr array) i)
     = Map.singleton (ArrTarget array i) $ RangeBool $ Set.singleton bool
-
 nonTrivRange bool (Negation p) = nonTrivRange (not bool) p
 
+-- Convert logical operators to range operators.
 nonTrivRange True (Operated Implies p q)
     = nonTrivRange False p `intersectRanges` nonTrivRange True q
 nonTrivRange False (Operated Implies p q)
@@ -46,6 +46,7 @@ nonTrivRange False (Operated Wedge p q)
 nonTrivRange False (Operated Vee p q)
     = nonTrivRange False p `unionRanges` nonTrivRange False q
 
+-- We know the range for comparisons with literals.
 nonTrivRange True (Operated LessThan (NameExpr n) (LiteralExpr (LiteralInt i)))
     = Map.singleton (NameTarget n) $ rightInfinite i
 nonTrivRange True (Operated LessThan (LiteralExpr (LiteralInt i)) (NameExpr n))
@@ -72,6 +73,7 @@ nonTrivRange True (Operated Equal (LiteralExpr (LiteralInt i)) (Index (NameExpr 
 nonTrivRange True (Operated Equal (Index (NameExpr n) e) (LiteralExpr (LiteralInt i)))
     = Map.singleton (ArrTarget n e) $ exclude i
 
+-- We know the range for comparisons with literals.
 nonTrivRange False (Operated LessThan (NameExpr n) (LiteralExpr (LiteralInt i)))
     = Map.singleton (NameTarget n) $ leftInfinite $ i-1
 nonTrivRange False (Operated LessThan (LiteralExpr (LiteralInt i)) (NameExpr n))
@@ -105,7 +107,7 @@ nonTrivRange _ (Quantify ForAll var expr) = nonTrivRange True expr
 -- (and ~∃x∈X P(x) is equivalent to ~∃x∈(X \ Y) P(x))
 nonTrivRange _ (Quantify Exists var expr) = nonTrivRange False expr
 
-nonTrivRange _ _ = Map.empty -- TODO: find some other cases to cover
+nonTrivRange _ _ = Map.empty
 
 -- |Determine which variables have to have identical values when we want to
 -- avoid trivially true (or false) instantiations.
@@ -133,7 +135,7 @@ nonTrivAlias False (Operated Equal (Index (NameExpr n1) e) (NameExpr n2))
     | n1 /= n2 = symmetrical (ArrTarget n1 e) (NameTarget n2)
 nonTrivAlias False (Operated Equal (Index (NameExpr n1) e1) (Index (NameExpr n2) e2))
     | (n1, e1) /= (n2, e2) = symmetrical (ArrTarget n1 e1) (ArrTarget n2 e2)
-nonTrivAlias _ _ = Map.empty -- TODO: find some other cases to cover
+nonTrivAlias _ _ = Map.empty
 
 -- |Give infinite range to free variables without a range
 -- We need a type to handle the case where the expression is a single name
@@ -144,6 +146,7 @@ defaultInfinite ty expr rangeHavers = rangeHavers `Map.union` fullRange ty expr
 fullRange :: Type -> Expression -> RangeMap
 fullRange ty expr = fullRangeFor <$> typeInferExpr ty expr
 
+-- |Determine the full range for a variable of the given type.
 fullRangeFor :: Type -> Range
 fullRangeFor (Primitive BoolType) = RangeBool $ Set.fromList [True, False]
 fullRangeFor (Primitive IntType) = RangeInt [(MinInfinite, MaxInfinite)]
@@ -269,7 +272,8 @@ normalize = normalize' . stripForall . prenex
     stripForall exp = exp
 
 -- |Is there no quantifier whatsoever in this formula?
--- Predicates with quantifiers are hard to test, so we reject quantifierful ones
+-- We prefer to test quantifier-free formulas since we do not have to repeatedly
+-- instantiate for one test case.
 isQuantifierFree :: Predicate -> Bool
 isQuantifierFree = foldExpression
     ( const True -- LiteralExpr

@@ -8,7 +8,10 @@ import qualified Data.Set as Set
 
 import Syntax
 
--- |So the AsgTarget and Variable and Name types aren't too cumbersome.
+-- ^Various tools to replace parts of syntax with other syntax.
+
+-- |Represents a piece of syntax that refers to a variable.
+-- So the AsgTarget and Variable and Name types aren't too cumbersome to mix.
 class Bindable var where
     toName :: var -> Name
 
@@ -40,7 +43,6 @@ class FreeVars syntax where
     -- |Give a set of any free variables in this piece of syntax.
     freeVars :: syntax -> Set.Set AsgTarget
     -- |Replace any free variables in the map with the given expression.
-    -- TODO: make this take Map.Map AsgTarget Expression?
     replace :: syntax -> Map.Map Name Expression -> syntax
     -- |Give new names to all the given free variables.
     -- The names will not match any of the names in the exclusion list afterward.
@@ -113,7 +115,7 @@ instance FreeVars Expression where
             then Quantify q (Variable freshName ty) freshE
             else f
         freeInSubsts = Map.keysSet substs' `Set.union`
-            (Set.map toName $ allFreeVars $ Map.elems substs')
+            Set.map toName (allFreeVars $ Map.elems substs')
         freshName = head $ filter (not . (`Set.member` freeInSubsts)) ["x" ++ show n | n <- [1..]]
         freshE = replace expr (Map.singleton name (NameExpr freshName))
 

@@ -12,6 +12,12 @@ import Range
 import Syntax
 import Util
 
+-- ^This module extends QuickCheck to allow existential quantification.
+-- In order to do this, we replace QuickCheck properties with the type of
+-- 'Gen CheckResult'. Sampling a single value from this generator is equivalent
+-- to running a single test case.
+-- For code that makes use of the Checker instances, see 'Lib.wlpCheck'.
+
 -- |Represents the values we chose for variables.
 type Instantiations = Map.Map AsgTarget Literal
 
@@ -50,13 +56,17 @@ isSure Counterexample{} = True
 isSure NoExample{} = False
 
 -- |Convert CheckResult to QuickCheck results.
+-- You probably don't want to use this since this will not nicely handle exists.
 instance Testable CheckResult where
     property = property . isSuccess
 
--- | The type of functions that check properties of the instantiations.
+-- |A value of this type uses instantiations to verify a predicate.
+-- See 'conclude' and 'quantify' for functions that produce Checkers.
 type Checker = Maybe (Gen Instantiations) -> Gen CheckResult
 
--- Evaluate a predicate without quantifiers.
+-- |Evaluate a predicate without quantifiers.
+-- This requires all free variables have been instantiated.
+-- Especially useful for the base case of a 'Checker', e.g. 'conclude'.
 runCase :: Predicate -> Instantiations -> Bool
 runCase predicate = literalToBool . fromRight . evaluateClosed predicate . literalize
     where
@@ -71,9 +81,8 @@ runCase predicate = literalToBool . fromRight . evaluateClosed predicate . liter
             Left missing -> target -- Can't evaluate, so don't replace.
             Right result -> ArrTarget arr $ LiteralExpr result
 
-
 -- |Evaluate a quantifier-free predicate with no free variables.
--- It should be sure of its result.
+-- Any result that 'conclude' produces is sure.
 conclude :: Predicate -> Checker
 conclude pred Nothing = pure NoCases -- Can't instantiate, so don't check.
 conclude pred (Just instantiationGen) = do
@@ -84,6 +93,8 @@ conclude pred (Just instantiationGen) = do
         else Counterexample pred instantiation
 
 -- |Add a new quantifier to the test.
+-- Will try various instantiations for the bound variable in the predicate.
+-- Uses 'quantifyResults' to get the conclusion of all tests simultaneously.
 quantify :: Quantifier -> BoundVariable -> Predicate -> Checker -> Checker
 quantify q (Variable name ty) pred checkPredicate instantiation = do
     -- we can use fromJust here because we are using full ranges
@@ -94,6 +105,13 @@ quantify q (Variable name ty) pred checkPredicate instantiation = do
     return $ quantifyResults q pred makeInstantiation results
 
 -- |Collect the results for a single quantifier.
+-- When the quantifier is 'ForAll', takes the conjunction of all results.
+-- When the quantifier is 'Exists', takes the disjunction of all results.
+-- Note that the outcome may not be equal to any of the results,
+-- since the program would not be sound otherwise.
+quantifyResults :: Quantifier -> Predicate -> (Instantiations -> Instantiations) ->
+        -- Adds the quantified variable to the instantiations.
+    [CheckResult] -> CheckResult
 quantifyResults ForAll pred makeInst = foldr conjoin $ SuccessForall pred
     where
     conjoin res@NoCases{} newRes = newRes
@@ -129,7 +147,8 @@ quantifiedCases originalPred@(Quantify q var pred)
 quantifiedCases pred = conclude pred
 
 -- |Convert a range of values to a QuickCheck generator.
--- Used to convert a Map AsgTarget to Gen Instantiations
+-- Used to convert a 'Map AsgTarget Range' to 'Gen Instantiations',
+-- for use in 'quantify' and 'Lib.testPredicate'.
 rangeToGen :: Range -> Maybe (Gen Literal)
 rangeToGen r
     | isEmpty r = Nothing

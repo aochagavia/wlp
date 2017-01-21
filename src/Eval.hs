@@ -5,14 +5,16 @@ import qualified Data.Set as Set
 
 import Syntax
 
+-- ^Defines the evaluation semantics of expressions, or 'Predicate's to be precise.
+
 -- |Cast a literal to bool.
 -- Errors when the literal isn't actually a bool.
--- (This isn't a problem
+-- (This isn't a problem since we type-check programs beforehand.)
 literalToBool :: Literal -> Bool
 literalToBool (LiteralBool b) = b
 literalToBool _ = error "TypeError: can't convert non-bool to bool"
 
--- |Encodes the catamorphisms of a Statement
+-- |Encodes the catamorphisms of a 'Statement'.
 type StatementAlgebra a =
     ( a -- Skip
     , Expression -> a -- Assert
@@ -24,6 +26,7 @@ type StatementAlgebra a =
     , Variables -> a -> a -- Var
     , Program -> AsgTargets -> Expressions -> a -- ProgramCall
     )
+-- |Turn an algebra into a catamorphism.
 foldStatement :: StatementAlgebra a -> Statement -> a
 foldStatement (skip, assert, assume, assign, sequence, if_, while, var, program) = fold' where
     fold' Skip = skip
@@ -36,7 +39,7 @@ foldStatement (skip, assert, assume, assign, sequence, if_, while, var, program)
     fold' (Var vs b) = var vs (fold' b)
     fold' (ProgramCall p ts es) = program p ts es
 
--- |Encodes the catamorphisms of an Expression
+-- |Encodes the catamorphisms of an 'Expression'.
 type ExpressionAlgebra a =
     ( Literal -> a -- LiteralExpr
     , Name -> a -- NameExpr
@@ -47,7 +50,7 @@ type ExpressionAlgebra a =
     , Quantifier -> BoundVariable -> a -> a -- Quantify
     )
 
--- |Turn an algebra into a catamorphism
+-- |Turn an algebra into a catamorphism.
 foldExpression :: ExpressionAlgebra a -> Expression -> a
 foldExpression (literal, name, operated, negation, index, repby, quantify) = fold' where
     fold' (LiteralExpr l) = literal l

@@ -13,10 +13,13 @@ import Syntax
 
 import Test.QuickCheck
 
+-- *Checking specific examples
+
 -- |A program that does absolutely nothing
 void :: Program
 void = program "void" [] [] []
 
+-- |Check that doing nothing doesn't invalidate anything.
 prop_void :: Property
 prop_void = once $ p === q
     where
@@ -29,11 +32,13 @@ intConst n = program "intConst" [] [("r", int)] [
                assignN ["r"] [i n]
            ]
 
-prop_intCont :: Int -> Property
-prop_intCont n = p === expectedP
+-- |Check the wlp for assignments works in trivial cases:
+-- assigning constant values.
+prop_intConst :: Int -> Property
+prop_intConst n = p === expectedP
     where
-    q = (ref "r") ==. (i n)
-    expectedP = (i n) ==. (i n)
+    q = ref "r" ==. i n
+    expectedP = i n ==. i n
     p = wlp (intConst n) q
 
 -- |An identity program for integers
@@ -42,11 +47,13 @@ intId = program "intId" [("x", int)] [("r", int)] [
             assignN ["r"] [ref "x"]
         ]
 
+-- |Check the wlp for assignments works in trivial cases:
+-- assigning variables.
 prop_intId :: Property
 prop_intId = once $ p === expectedP
     where
-    q = (ref "r") ==. (ref "x")
-    expectedP = (ref "x") ==. (ref "x")
+    q = ref "r" ==. ref "x"
+    expectedP = ref "x" ==. ref "x"
     p = wlp intId q
 
 -- |A special test for bound variables
@@ -57,7 +64,7 @@ prop_intIdBound = once $ p === q
     p = wlp intId q
 
 -- |A program that swaps two variables
--- Uses simultaneous assignment, so might break assignment semantics sometimes.
+-- Breaks when simultaneous substitution fails.
 swapSimultaneous :: Program
 swapSimultaneous = program "swapSimultaneous" [("x", int), ("y", int)] [("x", int), ("y", int)] [
         assignN ["x", "y"] [ref "y", ref "x"]
@@ -104,28 +111,7 @@ prop_localVarsWork = once $ p === expectedP
     p = wlp overwriteLocalVar q
     expectedP = ref "x" <. i 0
 
--- |The example program E from the assignment
-exampleProgram :: Program
-exampleProgram = program "exampleProgram" [("x", int)] [("y", int)] [
-        assume $ i (-1) <=. ref "x",
-        while (i 0 <. ref "x") [ assignN ["x"] [ref "x" -. i 1]],
-        assignN ["y"] [ref "x"],
-        assert $ ref "y" ==. i 0
-    ]
-
-prop_exampleProgramPaths :: Property
-prop_exampleProgramPaths = once $ foundPaths === expectedPaths
-    where
-    foundPaths :: [[Statement]]
-    foundPaths = map unSequence $ paths 7 exampleProgram
-    expectedPaths :: [[Statement]]
-    expectedPaths = [
-            [assume $ i (-1) <=. ref "x", assume $ neg $ i 0 <. ref "x", assignN ["y"] [ref "x"], assert $ ref "y" ==. i 0],
-            [assume $ i (-1) <=. ref "x", assume $ i 0 <. ref "x", assignN ["x"] [ref "x" -. i 1], assume $ neg $ i 0 <. ref "x", assignN ["y"] [ref "x"], assert $ ref "y" ==. i 0],
-            [assume $ i (-1) <=. ref "x", assume $ i 0 <. ref "x", assignN ["x"] [ref "x" -. i 1], assume $ i 0 <. ref "x", assignN ["x"] [ref "x" -. i 1], assume $ neg $ i 0 <. ref "x", assignN ["y"] [ref "x"], assert $ ref "y" ==. i 0]
-        ]
-
--- |Don't bind variables that will enter into the WLP
+-- |A program that contains two variables with the same name.
 varTest = program "varTest" [] [] [
         assume $ ref "b",
         var [("b", int)] [
@@ -133,6 +119,7 @@ varTest = program "varTest" [] [] [
         ]
     ]
 
+-- |Binding one variable shouldn't bind the other variable.
 prop_varTestWLP :: Property
 prop_varTestWLP = once $ foundWLP === expectedWLP
     where
@@ -150,6 +137,7 @@ asgTest = program "asgTest" [("i", int)] [("j", int)] [
         assert $ ref "j" ==. i 0
     ]
 
+-- |Make sure program calls respect bound variables correctly.
 prop_asgTestPaths :: Property
 prop_asgTestPaths = once $ foundPaths === expectedPaths
     where
@@ -165,7 +153,7 @@ prop_asgTestPaths = once $ foundPaths === expectedPaths
                     -- the right associativity.
                     assignN ["x2"] [ref "i"] `Sequence`
                     (skip `Sequence` (
-                    (assume $ neg $ ref "x1") `Sequence`
+                    assume (neg $ ref "x1") `Sequence`
                     assignN ["x3"] [ref "x2"] `Sequence`
                     skip)) `Sequence`
                     assignN ["j"] [ref "x3"]
@@ -186,6 +174,29 @@ prop_substituteBound = once $ expectedWLP === foundWLP
     expectedWLP = forall "x1" int $ ref "x" ==. ref "x1"
     foundWLP = wlp' (assignN ["y"] [ref "x"]) $ forall "x" int $ ref "y" ==. ref "x"
 
+-- |The example program E from the assignment
+exampleProgram :: Program
+exampleProgram = program "exampleProgram" [("x", int)] [("y", int)] [
+        assume $ i (-1) <=. ref "x",
+        while (i 0 <. ref "x") [ assignN ["x"] [ref "x" -. i 1]],
+        assignN ["y"] [ref "x"],
+        assert $ ref "y" ==. i 0
+    ]
+
+-- |Check the list of paths from the assignment is equal to our list.
+prop_exampleProgramPaths :: Property
+prop_exampleProgramPaths = once $ foundPaths === expectedPaths
+    where
+    foundPaths :: [[Statement]]
+    foundPaths = map unSequence $ paths 7 exampleProgram
+    expectedPaths :: [[Statement]]
+    expectedPaths = [
+            [assume $ i (-1) <=. ref "x", assume $ neg $ i 0 <. ref "x", assignN ["y"] [ref "x"], assert $ ref "y" ==. i 0],
+            [assume $ i (-1) <=. ref "x", assume $ i 0 <. ref "x", assignN ["x"] [ref "x" -. i 1], assume $ neg $ i 0 <. ref "x", assignN ["y"] [ref "x"], assert $ ref "y" ==. i 0],
+            [assume $ i (-1) <=. ref "x", assume $ i 0 <. ref "x", assignN ["x"] [ref "x" -. i 1], assume $ i 0 <. ref "x", assignN ["x"] [ref "x" -. i 1], assume $ neg $ i 0 <. ref "x", assignN ["y"] [ref "x"], assert $ ref "y" ==. i 0]
+        ]
+
+-- |The example program has a bug, let's check that we can find this bug.
 exampleProgramIsWrong :: IO CheckResult
 exampleProgramIsWrong = wlpCheck exampleProgram 7
 
@@ -198,10 +209,11 @@ exampleProgramFixed = program "exampleProgram" [("x", int)] [("y", int)] [
         assert $ ref "y" ==. i 0
     ]
 
+-- |And check that we detect it to work.
 exampleProgramIsFixed :: IO CheckResult
 exampleProgramIsFixed = wlpCheck exampleProgramFixed 7
 
--- |The example program E from the assignment, with invariant
+-- |The example program E from the assignment, with invariant and fix.
 exampleProgramInv :: Program
 exampleProgramInv = program "exampleProgram" [("x", int)] [("y", int)] [
         assume $ i 0 <=. ref "x",
@@ -212,6 +224,7 @@ exampleProgramInv = program "exampleProgram" [("x", int)] [("y", int)] [
         assert $ ref "y" ==. i 0
     ]
 
+-- |This program should still work.
 exampleProgramInvWorks :: IO CheckResult
 exampleProgramInvWorks = wlpCheck exampleProgramInv 7
 
@@ -226,10 +239,11 @@ exampleProgramInvWrong = program "exampleProgram" [("x", int)] [("y", int)] [
         assert $ ref "y" ==. i 0
     ]
 
+-- |This program should still be broken.
 exampleProgramInvIsWrong :: IO CheckResult
 exampleProgramInvIsWrong = wlpCheck exampleProgramInvWrong 7
 
--- |The minind program from assignment 1
+-- |The minind program from assignment 1.
 minind :: Program
 minind = program "minind" [("a", Array IntType), ("i", int), ("N", int)] [("r", int)] [
         assume $ (ref "N" >. ref "i") /\. (ref "i" ==. ref "i'"),
@@ -245,7 +259,7 @@ minind = program "minind" [("a", Array IntType), ("i", int), ("N", int)] [("r", 
         assert $ forall "j" int $ ((ref "j" >=. ref "i'") /\. (ref "j" <. ref "N")) =>.
             (("a" !!. ref "j") >=. ("a" !!. ref "r"))
     ]
-
+-- |Ensure the program passes the tests.
 minindWorks :: IO CheckResult
 minindWorks = wlpCheck minind 20
 
@@ -265,10 +279,11 @@ minindWrong = program "minind" [("a", Array IntType), ("i", int), ("N", int)] [(
         assert $ forall "j" int $ ((ref "j" >=. ref "i'") /\. (ref "j" <. ref "N")) =>.
             (("a" !!. ref "j") <=. ("a" !!. ref "r"))
     ]
-
+-- |This should give an error.
 minindIsWrong :: IO CheckResult
 minindIsWrong = wlpCheck minindWrong 20
 
+-- |The swap program from assignment 1, which uses a temporary variable.
 swap :: Program
 swap = program "swap" [("a", Array IntType), ("i", int), ("j", int)] [("a'", Array IntType)] [
         assume $ (("a" !!. ref "i") ==. ref "x") /\. (("a" !!. ref "j") ==. ref "y"),
@@ -280,6 +295,7 @@ swap = program "swap" [("a", Array IntType), ("i", int), ("j", int)] [("a'", Arr
         ],
         assert $ (("a'" !!. ref "j") ==. ref "x") /\. (("a'" !!. ref "i") ==. ref "y")
     ]
+-- |The swap program from assignment 1, which uses simultaneous assignment.
 swap' :: Program
 swap' = program "swap'" [("a", Array IntType), ("i", int), ("j", int)] [("a'", Array IntType)] [
         assume $ (("a" !!. ref "i") ==. ref "x") /\. (("a" !!. ref "j") ==. ref "y"),
@@ -288,11 +304,12 @@ swap' = program "swap'" [("a", Array IntType), ("i", int), ("j", int)] [("a'", A
         assert $ (("a'" !!. ref "j") ==. ref "x") /\. (("a'" !!. ref "i") ==. ref "y")
     ]
 
-swapWorks :: IO CheckResult
+-- |Both of these programs should work.
+swapWorks, swap'Works :: IO CheckResult
 swapWorks = wlpCheck swap 10
-swap'Works :: IO CheckResult
 swap'Works = wlpCheck swap' 10
 
+-- |The swap program with a broken postcondition.
 swapWrong :: Program
 swapWrong = program "swap" [("a", Array IntType), ("i", int), ("j", int)] [("a'", Array IntType)] [
         assume $ (("a" !!. ref "i") ==. ref "x") /\. (("a" !!. ref "j") ==. ref "y"),
@@ -304,7 +321,7 @@ swapWrong = program "swap" [("a", Array IntType), ("i", int), ("j", int)] [("a'"
         ],
         assert $ (("a'" !!. ref "i") ==. ref "x") /\. (("a'" !!. ref "j") ==. ref "y")
     ]
-
+-- |Check that we can find the bug in this program.
 swapIsWrong :: IO CheckResult
 swapIsWrong = wlpCheck swapWrong 10
 
@@ -321,10 +338,11 @@ findNonzeroWrong = program "findNonzero" [("a", Array IntType)] [("i", int)] [
         ],
         assert $ ("a" !!. ref "i") ==. i 0
     ]
-
+-- |Use quantifiers to prove the program is wrong.
 findNonzeroIsWrong :: IO CheckResult
 findNonzeroIsWrong = wlpCheck findNonzeroWrong 20
 
+-- |Use an uninstantiated variable to keep finding an index which is nonzero.
 findNonzero :: Program
 findNonzero = program "findNonzero" [("a", Array IntType)] [("i", int)] [
         assume $ exists "j" int $ ("a" !!. ref "j") !=. i 0,
@@ -337,10 +355,11 @@ findNonzero = program "findNonzero" [("a", Array IntType)] [("i", int)] [
         ],
         assert $ ("a" !!. ref "i") !=. i 0
     ]
-
+-- |We should accept this version of the program.
 findNonzeroWorks :: IO CheckResult
 findNonzeroWorks = wlpCheck findNonzero 20
 
+-- |A selection sort program that calls other programs.
 sort :: Program
 sort = program "sort" [("a", Array IntType), ("N", int)] [("a'", Array IntType)] [
         assume $ ref "N" >=. i 0,
@@ -358,10 +377,11 @@ sort = program "sort" [("a", Array IntType), ("N", int)] [("a'", Array IntType)]
         assert $ forall "i" int $ ((i 0 <=. ref "i") /\. (ref "i" <. (ref "N" -. i 1))) =>.
             (("a'" !!. ref "i") <=. ("a'" !!. (ref "i" +. i 1)))
     ]
-
+-- |Verify this program works.
 sortWorks :: IO CheckResult
 sortWorks = wlpCheck sort 35
 
+-- |Equivalent to 'minind' but uses an invariant in the loop.
 minindInv :: Program
 minindInv = program "minindInv" [("a", Array IntType), ("i", int), ("N", int)] [("r", int)] [
         assume $ (ref "N" >. ref "i") /\. (ref "i" ==. ref "i'"),
@@ -380,10 +400,11 @@ minindInv = program "minindInv" [("a", Array IntType), ("i", int), ("N", int)] [
         assert $ forall "j" int $ ((ref "j" >=. ref "i'") /\. (ref "j" <. ref "N")) =>.
             (("a" !!. ref "j") >=. ("a" !!. ref "r"))
     ]
-
+-- |Check that this program also works.
 minindInvWorks :: IO CheckResult
 minindInvWorks = wlpCheck minindInv 20
 
+-- |Equivalent to 'sort' but uses 'minindInv' instead of 'minind'.
 sortInv :: Program
 sortInv = program "sort" [("a", Array IntType), ("N", int)] [("a'", Array IntType)] [
         assume $ ref "N" >=. i 0,
@@ -402,9 +423,11 @@ sortInv = program "sort" [("a", Array IntType), ("N", int)] [("a'", Array IntTyp
             (("a'" !!. ref "i") <=. ("a'" !!. (ref "i" +. i 1)))
     ]
 
+-- |Check that this program also works.
 sortInvWorks :: IO CheckResult
 sortInvWorks = wlpCheck sortInv 35
 
+-- *Checking arbitrary examples
 
 -- |Represents parts of expressions that have an explicit type.
 class ArbitraryTyped a where
@@ -441,7 +464,6 @@ instance ArbitraryTyped Expression where
                     <*> resize firstHalf (arbitraryTyped leftType)
                     <*> resize (size - firstHalf) (arbitraryTyped rightType)
             ]
-    -- TODO: merge this with the above somehow?
     arbitraryTyped t@(Primitive BoolType) = sized $ \size -> if size <= 0
         then LiteralExpr <$> arbitraryTyped t
         else oneof
@@ -481,7 +503,7 @@ prop_normalizeIsEquivalent = forAll (arbitraryTyped bool) doCheck
 
 -- |Refreshing should only refresh the given free variables
 prop_refreshKeepsVars :: Property
-prop_refreshKeepsVars = forAll (arbitraryTyped bool :: Gen Expression) $ (\expr ->
+prop_refreshKeepsVars = forAll (arbitraryTyped bool :: Gen Expression) (\expr ->
         freeVars expr == freeVars (refresh Set.empty Set.empty expr))
 
 -- |Make sure the wlp after assignment of arrays is calculated correctly
@@ -517,7 +539,7 @@ prop_replaceArrayIndex = once $ replace stmt replacements === stmt'
         , ("i", ref "j")
         , ("x", ref "y")
         ]
-
+-- |Check that taking the union of a 'RangeMap' and an 'AliasMap' works.
 prop_unionAliases :: Property
 prop_unionAliases = once $ unionAliasRange ranges aliases === expected
     where
@@ -537,6 +559,8 @@ prop_unionAliases = once $ unionAliasRange ranges aliases === expected
 return []
 runTests = $quickCheckAll
 
+-- |The main function.
+-- Runs all tests for the program, and demonstrates the verification tool works.
 main = do
     runTests
     putStrLn "The following programs should fail:"
