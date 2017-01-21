@@ -151,6 +151,7 @@ wlpCheck prog len = do
     else putStrLn $ "Failed: " ++ show finalResult
     return finalResult
     where
+    -- Run each path a number of times (until we find a counterexample)
     maxTests :: Int
     maxTests = 1000 * len
     -- All the paths that can be tested.
@@ -171,7 +172,7 @@ wlpCheck prog len = do
     runTests' :: Int -> Bool -> Bool -> CheckResult -> [IO CheckResult] -> IO CheckResult
     runTests' 0 _ _ res _ = pure res
     runTests' _ _ _ res [] = pure res
-    runTests' _ False False res _ = pure res
+    runTests' _ True False res _ = pure res
     runTests' n True True res (t:ts) = do
         newRes <- t
         runTests' (n-1) (isSure newRes) (isSuccess newRes) newRes ts
@@ -180,8 +181,8 @@ wlpCheck prog len = do
         if isSuccess newRes
         then runTests' (n-1) False True res ts
         else runTests' (n-1) (isSure newRes) False newRes ts
-    runTests' n True False res (t:ts) = do
+    runTests' n False False res (t:ts) = do
         newRes <- t
         if isSuccess newRes
-        then runTests' (n-1) True False res ts
+        then runTests' (n-1) False False res ts
         else runTests' (n-1) (isSure newRes) False newRes ts

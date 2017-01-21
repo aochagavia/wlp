@@ -360,7 +360,7 @@ sort = program "sort" [("a", Array IntType), ("N", int)] [("a'", Array IntType)]
     ]
 
 sortWorks :: IO CheckResult
-sortWorks = wlpCheck sort 20
+sortWorks = wlpCheck sort 35
 
 -- |Represents parts of expressions that have an explicit type.
 class ArbitraryTyped a where
