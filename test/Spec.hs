@@ -327,7 +327,7 @@ findNonzeroIsWrong = wlpCheck findNonzeroWrong 20
 
 findNonzero :: Program
 findNonzero = program "findNonzero" [("a", Array IntType)] [("i", int)] [
-        assume $ neg $ forall "j" int $ ("a" !!. ref "j") ==. i 0,
+        assume $ exists "j" int $ ("a" !!. ref "j") !=. i 0,
         while (("a" !!. ref "i") ==. i 0) [
             var [("j", int)] [
                 if_ (("a" !!. ref "j") !=. i 0) [
@@ -361,6 +361,50 @@ sort = program "sort" [("a", Array IntType), ("N", int)] [("a'", Array IntType)]
 
 sortWorks :: IO CheckResult
 sortWorks = wlpCheck sort 35
+
+minindInv :: Program
+minindInv = program "minind" [("a", Array IntType), ("i", int), ("N", int)] [("r", int)] [
+        assume $ (ref "N" >. ref "i") /\. (ref "i" ==. ref "i'"),
+        var [("min", int)] [
+            assignN ["min", "r"] ["a" !!. ref "i", ref "i"],
+            While (Just $ forall "j" int $
+                        ((ref "j" >=. ref "i") /\. (ref "j" <. ref "i")) =>.
+                        (("a" !!. ref "j") >=. ("a" !!. ref "r")))
+                    (ref "i" <. ref "N") $ foldSequence [
+                if_ (("a" !!. ref "i") <. ref "min") [
+                    assignN ["min", "r"] ["a" !!. ref "i", ref "i"]
+                ] [],
+                assignN ["i"] [ref "i" +. i 1]
+            ]
+        ],
+        assert $ forall "j" int $ ((ref "j" >=. ref "i'") /\. (ref "j" <. ref "N")) =>.
+            (("a" !!. ref "j") >=. ("a" !!. ref "r"))
+    ]
+
+minindInvWorks :: IO CheckResult
+minindInvWorks = wlpCheck minindInv 20
+
+sortInv :: Program
+sortInv = program "sort" [("a", Array IntType), ("N", int)] [("a'", Array IntType)] [
+        assume $ ref "N" >=. i 0,
+        var [("i", int)] [
+            assignN ["i"] [i 0],
+            while (ref "i" <. (ref "N" -. i 1)) [
+                call ["m"] minindInv [ref "a", ref "i" +. i 1, ref "N"],
+                if_ (("a" !!. ref "m") <. ("a" !!. ref "i")) [
+                    call ["a"] swap' [ref "a", ref "i", ref "m"]
+                ] [],
+                assignN ["i"] [ref "i" +. i 1]
+            ]
+        ],
+        assignN ["a'"] [ref "a"],
+        assert $ forall "i" int $ ((i 0 <=. ref "i") /\. (ref "i" <. (ref "N" -. i 1))) =>.
+            (("a'" !!. ref "i") <=. ("a'" !!. (ref "i" +. i 1)))
+    ]
+
+sortInvWorks :: IO CheckResult
+sortInvWorks = wlpCheck sortInv 35
+
 
 -- |Represents parts of expressions that have an explicit type.
 class ArbitraryTyped a where
