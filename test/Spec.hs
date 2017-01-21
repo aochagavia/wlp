@@ -363,7 +363,7 @@ sortWorks :: IO CheckResult
 sortWorks = wlpCheck sort 35
 
 minindInv :: Program
-minindInv = program "minind" [("a", Array IntType), ("i", int), ("N", int)] [("r", int)] [
+minindInv = program "minindInv" [("a", Array IntType), ("i", int), ("N", int)] [("r", int)] [
         assume $ (ref "N" >. ref "i") /\. (ref "i" ==. ref "i'"),
         var [("min", int)] [
             assignN ["min", "r"] ["a" !!. ref "i", ref "i"],
@@ -550,6 +550,7 @@ main = do
     exampleProgramIsFixed
     exampleProgramInvWorks
     minindWorks
+    minindInvWorks
     swapWorks
     swap'Works
     findNonzeroWorks
